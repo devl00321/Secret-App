@@ -1,46 +1,61 @@
-# Love App Monorepo
+❤️ LUVV – Private Couple App
+LUVV is a modern, privacy-focused couple application designed to strengthen emotional connection through secure communication, real-time features, and intelligent interaction systems.
+This project is being developed as a full-stack mobile application with a strong focus on user experience, security, and reliability.
 
-Welcome to the Love App project. This is a monorepo containing the mobile application, server, and shared packages.
+🚀 Features
+- 🔐 Secure partner pairing system (code-based + Firebase)
+- 💬 Real-time chat and interaction
+- 📱 Cross-platform mobile app (Expo / React Native)
+- 🔑 Google Authentication (env-controlled)
+- ⚡ Optimized backend with validation & rate limiting
+- 🧠 Clean state management and scalable architecture
 
-## Project Structure
 
-- `apps/mobile`: Expo-based React Native mobile application.
-- `apps/server`: Backend server.
-- `packages/shared`: Shared types and logic used by both mobile and server.
+🛠️ Tech Stack
+Frontend (Mobile)
+- Expo Router
+- React Native
+- TypeScript
 
-## Getting Started
+Backend
+- Node.js + Express
+- TypeScript
 
-### Prerequisites
+Services
+- Firebase (Auth, Firestore)
+- REST APIs
 
-- Node.js (v18 or later recommended)
-- npm or yarn
+🔒 Security & Improvements
+- Input sanitization for auth flows
+- Rate limiting implemented
+- Secure pairing using transactional logic
 
-### Installation
+Environment-based configuration (no hardcoded secrets)
+📂 App Structure
+- `app/`: Expo Router routes
+- `src/screens/`: routed screen implementations
+- `src/services/`: Firebase, auth, and pairing logic
+- `src/store/`: Zustand state
+- `src/theme/`: shared design tokens
 
-Run the following command in the root directory to install dependencies for all packages:
-
+⚙️ Setup
 ```bash
 npm install
+npm run start --workspace mobile
+npm run lint --workspace mobile
+npm run typecheck --workspace mobile
 ```
+# fill env values
+Copy `apps/mobile/.env.example` to `.env` and set the values you need.
 
-### Running the Applications
+- `EXPO_PUBLIC_FIREBASE_*`: Firebase project configuration
+- `EXPO_PUBLIC_GOOGLE_*_CLIENT_ID`: platform-specific Google auth client IDs
 
-#### Mobile App
+Google sign-in stays disabled on native builds until the relevant client ID is configured.
 
-```bash
-npm run dev:mobile
-```
+📌 Status
+🚧 Currently in active development
+Focus: Stability, UX improvements, and feature expansion
 
-#### Server
-
-```bash
-npm run dev:server
-```
-
-## Environment Variables
-
-Make sure to set up the necessary `.env` files in `apps/mobile` and `apps/server`. Refer to the `.env.example` files in each directory.
-
-## License
-
-This project is licensed under the ISC License.
+💡 Vision
+To create a safe, intimate, and intelligent digital space for couples, combining emotional warmth with strong technical reliability.
