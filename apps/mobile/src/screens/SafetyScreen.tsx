@@ -1,15 +1,18 @@
 import React, { useState } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, SafeAreaView, Switch, ScrollView } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, Switch, ScrollView } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Header } from '../components/Header';
 import { Card } from '../components/Card';
 import { Shield, AlertTriangle, Phone, Radio } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useTheme } from '../theme';
 
 export const SafetyScreen = () => {
+  const theme = useTheme();
   const [isWalkSafe, setIsWalkSafe] = useState(false);
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
       <Header title="Safety Center" showBack />
       
       <ScrollView 
@@ -29,37 +32,37 @@ export const SafetyScreen = () => {
         <Card style={styles.modeCard}>
           <View style={styles.row}>
             <View style={styles.modeInfo}>
-              <Text style={styles.modeTitle}>Walk Safe Mode</Text>
-              <Text style={styles.modeDesc}>{"Alerts partner if you don't reach home"}</Text>
+              <Text style={[styles.modeTitle, { color: theme.text }]}>Walk Safe Mode</Text>
+              <Text style={[styles.modeDesc, { color: theme.textLight }]}>{"Alerts partner if you don't reach home"}</Text>
             </View>
             <Switch 
               value={isWalkSafe} 
               onValueChange={setIsWalkSafe} 
-              trackColor={{ false: '#DDD', true: '#FF6B6B' }}
+              trackColor={{ false: theme.border, true: theme.primary }}
             />
           </View>
         </Card>
 
         <View style={styles.statusRow}>
           <View style={styles.statusItem}>
-            <Radio size={20} color={isWalkSafe ? "#FF6B6B" : "#AAA"} />
-            <Text style={styles.statusLabel}>Tracking: {isWalkSafe ? "Active" : "Inactive"}</Text>
+            <Radio size={20} color={isWalkSafe ? theme.primary : theme.textLight} />
+            <Text style={[styles.statusLabel, { color: theme.textLight }]}>Tracking: {isWalkSafe ? "Active" : "Inactive"}</Text>
           </View>
           <View style={styles.statusItem}>
             <Shield size={20} color="#4CAF50" />
-            <Text style={styles.statusLabel}>Partner Alerted</Text>
+            <Text style={[styles.statusLabel, { color: theme.textLight }]}>Partner Alerted</Text>
           </View>
         </View>
 
         <View style={styles.emergencyContacts}>
-          <Text style={styles.sectionTitle}>Emergency Actions</Text>
-          <TouchableOpacity style={styles.actionItem}>
-            <Phone size={24} color="#333" />
-            <Text style={styles.actionText}>Call Partner</Text>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Emergency Actions</Text>
+          <TouchableOpacity style={[styles.actionItem, { backgroundColor: theme.surface }]}>
+            <Phone size={24} color={theme.text} />
+            <Text style={[styles.actionText, { color: theme.text }]}>Call Partner</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.actionItem, styles.lastAction]}>
-            <AlertTriangle size={24} color="#FF6B6B" />
-            <Text style={[styles.actionText, { color: '#FF6B6B' }]}>Silent Emergency Alert</Text>
+          <TouchableOpacity style={[styles.actionItem, styles.lastAction, { backgroundColor: theme.surface, borderColor: theme.primary + '30' }]}>
+            <AlertTriangle size={24} color={theme.primary} />
+            <Text style={[styles.actionText, { color: theme.primary }]}>Silent Emergency Alert</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -70,7 +73,6 @@ export const SafetyScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FAFAFA',
   },
   content: {
     padding: 25,
@@ -161,7 +163,6 @@ const styles = StyleSheet.create({
   actionItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'white',
     padding: 18,
     borderRadius: 15,
     marginBottom: 12,

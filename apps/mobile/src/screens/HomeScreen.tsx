@@ -1,5 +1,6 @@
 import React from 'react';
-import { StyleSheet, View, Text, ScrollView, TouchableOpacity, SafeAreaView, Platform } from 'react-native';
+import { StyleSheet, View, Text, ScrollView, TouchableOpacity, Platform } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuthStore } from '../store/useAuthStore';
 import { Card } from '../components/Card';
 import { Heart, User, MessageCircle, Sparkles, Activity } from 'lucide-react-native';
@@ -216,7 +217,6 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 24,
-    backgroundColor: 'white',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 16,

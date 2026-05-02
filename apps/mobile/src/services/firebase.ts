@@ -1,6 +1,9 @@
+import 'react-native-get-random-values';
 import { initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+// @ts-expect-error: getReactNativePersistence is available in the React Native SDK but not in the web types
+import { getAuth, initializeAuth, getReactNativePersistence } from 'firebase/auth';
+import { getFirestore, initializeFirestore } from 'firebase/firestore';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const firebaseConfig = {
   apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY ?? 'AIzaSyCsRH4VA-5hVqer3PBdYKaxpfnEmQg_MkI',
@@ -14,5 +17,30 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 
-export const auth = getAuth(app);
-export const db = getFirestore(app);
+// Singleton Auth initialization for React Native
+const getSafeAuth = () => {
+  try {
+    return getAuth(app);
+  } catch (e) {
+    return initializeAuth(app, {
+      persistence: getReactNativePersistence(AsyncStorage)
+    });
+  }
+};
+
+export const auth = getSafeAuth();
+
+// Force Long Polling for maximum network compatibility
+const getSafeDb = () => {
+  try {
+    // Try to get the existing instance
+    return getFirestore(app);
+  } catch (e) {
+    // If it doesn't exist, initialize it with custom settings
+    return initializeFirestore(app, {
+      experimentalForceLongPolling: true,
+    });
+  }
+};
+
+export const db = getSafeDb();

@@ -1,5 +1,6 @@
 import React from 'react';
-import { Alert, StyleSheet, View, Text, TouchableOpacity, Platform, SafeAreaView, Dimensions } from 'react-native';
+import { Alert, StyleSheet, View, Text, TouchableOpacity, Platform, Dimensions } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Heart, Phone, Mail, Globe } from 'lucide-react-native';
 import { Href, useRouter } from 'expo-router';

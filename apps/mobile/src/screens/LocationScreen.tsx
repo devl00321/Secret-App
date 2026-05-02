@@ -1,43 +1,46 @@
 import React, { useState } from 'react';
-import { StyleSheet, View, Text, SafeAreaView, Dimensions } from 'react-native';
+import { StyleSheet, View, Text, useWindowDimensions } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Header } from '../components/Header';
 import { Button } from '../components/Button';
-import { MapPin } from 'lucide-react-native';
-
-const { width, height } = Dimensions.get('window');
+import { MapPin, Radio, Shield, Phone, AlertTriangle } from 'lucide-react-native';
+import { useTheme } from '../theme';
+import { Card } from '../components/Card';
 
 export const LocationScreen = () => {
+  const theme = useTheme();
+  const { width, height } = useWindowDimensions();
   const [isSharing, setIsSharing] = useState(false);
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
       <Header title="Live Location" showBack />
       
       {/* Placeholder for MapView */}
-      <View style={styles.mapPlaceholder}>
-        <View style={styles.markerContainer}>
+      <View style={[styles.mapPlaceholder, { backgroundColor: theme.isDark ? '#1A1A1A' : '#E8F1F2' }]}>
+        <View style={[styles.markerContainer, { top: height * 0.4, left: width * 0.5 }]}>
           <View style={[styles.marker, styles.myMarker]}>
             <Text style={styles.markerInitial}>M</Text>
           </View>
-          <Text style={styles.markerLabel}>Me</Text>
+          <Text style={[styles.markerLabel, { color: theme.text }]}>Me</Text>
         </View>
 
         <View style={[styles.markerContainer, { top: height * 0.3, left: width * 0.4 }]}>
           <View style={[styles.marker, styles.partnerMarker]}>
             <Text style={styles.markerInitial}>P</Text>
           </View>
-          <Text style={styles.markerLabel}>Partner</Text>
+          <Text style={[styles.markerLabel, { color: theme.text }]}>Partner</Text>
         </View>
 
-        <View style={styles.mapInstructions}>
-          <Text style={styles.mapText}>Interactive map will appear here after API configuration</Text>
+        <View style={[styles.mapInstructions, { backgroundColor: theme.surface + 'CC' }]}>
+          <Text style={[styles.mapText, { color: theme.textLight }]}>Interactive map will appear here after API configuration</Text>
         </View>
       </View>
 
-      <View style={styles.footer}>
+      <View style={[styles.footer, { backgroundColor: theme.surface, borderTopColor: theme.border }]}>
         <View style={styles.infoRow}>
-          <MapPin size={20} color="#FF6B6B" />
-          <Text style={styles.infoText}>Partner is at Home (shared 5m ago)</Text>
+          <MapPin size={20} color={theme.primary} />
+          <Text style={[styles.infoText, { color: theme.text }]}>Partner is at Home (shared 5m ago)</Text>
         </View>
         <Button 
           title={isSharing ? "Stop Sharing" : "Start Sharing Location"} 
@@ -52,7 +55,6 @@ export const LocationScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: 'white',
   },
   mapPlaceholder: {
     flex: 1,
@@ -63,8 +65,6 @@ const styles = StyleSheet.create({
   markerContainer: {
     position: 'absolute',
     alignItems: 'center',
-    top: height * 0.4,
-    left: width * 0.5,
   },
   marker: {
     width: 40,
@@ -108,7 +108,6 @@ const styles = StyleSheet.create({
   },
   footer: {
     padding: 25,
-    backgroundColor: 'white',
     borderTopLeftRadius: 30,
     borderTopRightRadius: 30,
     shadowColor: '#000',

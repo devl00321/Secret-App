@@ -1,10 +1,13 @@
-import React from 'react';
-import { StyleSheet, View, Text, ScrollView, TouchableOpacity, SafeAreaView, Image } from 'react-native';
+import { StyleSheet, View, Text, ScrollView, TouchableOpacity } from 'react-native';
+import { Image } from 'expo-image';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Header } from '../components/Header';
 import { Card } from '../components/Card';
 import { Plus, Image as ImageIcon, FileText, Camera } from 'lucide-react-native';
+import { useTheme } from '../theme';
 
 export const TimelineScreen = () => {
+  const theme = useTheme();
   const memories = [
     {
       id: '1',
@@ -29,7 +32,7 @@ export const TimelineScreen = () => {
   ];
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
       <Header 
         title="Shared Timeline" 
         showBack 
@@ -39,31 +42,31 @@ export const TimelineScreen = () => {
           </TouchableOpacity>
         }
       />
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {memories.map((item) => (
-          <Card key={item.id} style={styles.memoryCard}>
-            <Text style={styles.date}>{item.date}</Text>
+          <Card key={item.id} style={[styles.memoryCard, { backgroundColor: theme.surface }]}>
+            <Text style={[styles.date, { color: theme.textLight }]}>{item.date}</Text>
             {item.imageUrl && (
-              <Image source={{ uri: item.imageUrl }} style={styles.image} resizeMode="cover" />
+              <Image source={{ uri: item.imageUrl }} style={styles.image} contentFit="cover" />
             )}
-            <Text style={styles.content}>{item.content}</Text>
-            <View style={styles.footer}>
-              <View style={styles.avatarMini} />
-              <Text style={styles.author}>Shared by you</Text>
+            <Text style={[styles.content, { color: theme.text }]}>{item.content}</Text>
+            <View style={[styles.footer, { borderTopColor: theme.border }]}>
+              <View style={[styles.avatarMini, { backgroundColor: theme.primarySoft }]} />
+              <Text style={[styles.author, { color: theme.textLight }]}>Shared by you</Text>
             </View>
           </Card>
         ))}
       </ScrollView>
 
-      <View style={styles.fabContainer}>
+      <View style={[styles.fabContainer, { backgroundColor: theme.surface, borderColor: theme.border, borderWidth: theme.isDark ? 1 : 0 }]}>
         <TouchableOpacity style={styles.fabItem}>
-          <Camera size={24} color="#FF6B6B" />
+          <Camera size={24} color={theme.primary} />
         </TouchableOpacity>
         <TouchableOpacity style={styles.fabItem}>
-          <FileText size={24} color="#FF6B6B" />
+          <FileText size={24} color={theme.primary} />
         </TouchableOpacity>
         <TouchableOpacity style={styles.fabItem}>
-          <ImageIcon size={24} color="#FF6B6B" />
+          <ImageIcon size={24} color={theme.primary} />
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -73,7 +76,6 @@ export const TimelineScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FAFAFA',
   },
   scrollContent: {
     padding: 20,
@@ -133,7 +135,6 @@ const styles = StyleSheet.create({
     bottom: 30,
     right: 20,
     flexDirection: 'row',
-    backgroundColor: 'white',
     borderRadius: 30,
     padding: 8,
     shadowColor: '#000',

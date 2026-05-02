@@ -50,6 +50,7 @@ export default function PairingScreen() {
   }, [generatedCode]);
 
   const handleGenerateCode = async () => {
+    console.log('Generate Code button pressed. User:', user?.uid);
     if (!user?.uid) {
       Alert.alert('Error', 'User session not found. Please log in again.');
       return;
@@ -59,9 +60,12 @@ export default function PairingScreen() {
     if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
     try {
+      console.log('Calling pairingService.createInviteCode...');
       const result = await pairingService.createInviteCode(user.uid);
+      console.log('Code generated successfully:', result.code);
       setGeneratedCode(result);
     } catch (error: any) {
+      console.error('Generation error in UI:', error);
       Alert.alert('Error', error.message || 'Failed to generate code.');
     } finally {
       setLoading(false);
@@ -98,7 +102,7 @@ export default function PairingScreen() {
     if (generatedCode) {
       try {
         await Share.share({
-          message: `Join me on Love App! Use my invite code: ${generatedCode.code}`,
+          message: `Join me on Luvv! Use my invite code: ${generatedCode.code}`,
         });
       } catch {
         Alert.alert('Unable to share', 'Copy the code and send it manually.');

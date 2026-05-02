@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../theme';
 import Animated, { FadeInUp, Layout } from 'react-native-reanimated';
 
@@ -18,15 +19,27 @@ export const MessageBubble = ({ content, isMe, timestamp }: MessageBubbleProps) 
       layout={Layout.springify()}
       style={[styles.container, isMe ? styles.myMessage : styles.partnerMessage]}
     >
-      <View style={[
-        styles.bubble, 
-        isMe 
-          ? { backgroundColor: theme.bubbleMe, borderBottomRightRadius: 4 } 
-          : { backgroundColor: theme.bubblePartner, borderBottomLeftRadius: 4 },
-        { borderRadius: theme.radius.lg }
-      ]}>
-        <Text style={[styles.text, { color: isMe ? '#FFFFFF' : theme.text }]}>{content}</Text>
-      </View>
+      {isMe ? (
+        <LinearGradient
+          colors={[theme.primary, theme.primary + 'DD']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={[
+            styles.bubble,
+            { borderBottomRightRadius: 4, borderRadius: theme.radius.lg }
+          ]}
+        >
+          <Text style={[styles.text, { color: '#FFFFFF' }]}>{content}</Text>
+        </LinearGradient>
+      ) : (
+        <View style={[
+          styles.bubble, 
+          { backgroundColor: theme.bubblePartner, borderBottomLeftRadius: 4 },
+          { borderRadius: theme.radius.lg }
+        ]}>
+          <Text style={[styles.text, { color: theme.text }]}>{content}</Text>
+        </View>
+      )}
       <Text style={[styles.timestamp, { color: theme.textLight }]}>
         {timestamp}
       </Text>

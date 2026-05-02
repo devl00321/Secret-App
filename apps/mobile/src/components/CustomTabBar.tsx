@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Platform, Dimensions } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Platform, useWindowDimensions } from 'react-native';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Home, MapPin, Shield, Heart } from 'lucide-react-native';
@@ -8,10 +8,11 @@ import Animated, { useAnimatedStyle, withSpring } from 'react-native-reanimated'
 import { BlurView } from 'expo-blur';
 import { useTheme } from '../theme';
 
-const { width } = Dimensions.get('window');
+
 
 export const CustomTabBar = ({ state, descriptors, navigation }: BottomTabBarProps) => {
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
   const theme = useTheme();
 
   const getIcon = (name: string, color: string) => {
@@ -35,6 +36,7 @@ export const CustomTabBar = ({ state, descriptors, navigation }: BottomTabBarPro
           { 
             backgroundColor: theme.glass,
             borderColor: theme.glassBorder,
+            width: width * 0.88, // Dynamic width here
           }
         ]}
       >
@@ -139,7 +141,6 @@ const styles = StyleSheet.create({
   },
   tabBar: {
     flexDirection: 'row',
-    width: width * 0.88,
     height: 70,
     borderRadius: 35,
     paddingHorizontal: 15,

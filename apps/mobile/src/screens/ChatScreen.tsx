@@ -7,9 +7,10 @@ import {
   TouchableOpacity, 
   KeyboardAvoidingView, 
   Platform, 
-  SafeAreaView, 
-  Text
+  Text,
+  Keyboard
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Header } from '../components/Header';
 import { MessageBubble } from '../components/MessageBubble';
 import { Send, Image as ImageIcon, Plus, Heart } from 'lucide-react-native';
@@ -56,7 +57,7 @@ export const ChatScreen = () => {
       <View style={[styles.emptyHeartWrapper, { backgroundColor: theme.surface, ...theme.shadows.soft }]}>
         <Heart size={40} color={theme.primary} fill={theme.primary} opacity={0.2} />
       </View>
-      <Text style={[styles.emptyTitle, { color: theme.text }]}>Start your story ❤️</Text>
+      <Text style={[styles.emptyTitle, { color: theme.text }]}>Start your story on Luvv ❤️</Text>
       <Text style={[styles.emptySubtitle, { color: theme.textLight }]}>Every message is a memory in the making.</Text>
     </Animated.View>
   );

@@ -28,37 +28,36 @@ export const pairingService = {
    * Generates a 6-digit random code and stores it in inviteCodes
    */
   createInviteCode: async (userId: string) => {
-    const batch = writeBatch(db);
-    const q = query(collection(db, 'inviteCodes'), where('createdBy', '==', userId));
-    const existingCodes = await getDocs(q);
-
-    for (const d of existingCodes.docs) {
-      batch.delete(d.ref);
-    }
-
-    await batch.commit();
-
-    let code = generateSecureInviteCode();
-    let existingCodeDoc = await getDoc(doc(db, 'inviteCodes', code));
-
-    while (existingCodeDoc.exists()) {
-      code = generateSecureInviteCode();
-      existingCodeDoc = await getDoc(doc(db, 'inviteCodes', code));
-    }
-
+    const code = generateSecureInviteCode();
     const expiryDate = new Date();
     expiryDate.setMinutes(expiryDate.getMinutes() + INVITE_EXPIRY_MINUTES);
 
-    const codeRef = doc(db, 'inviteCodes', code);
-    await setDoc(codeRef, {
-      code,
-      createdBy: userId,
-      createdAt: serverTimestamp(),
-      expiresAt: expiryDate,
-      isUsed: false
-    });
+    try {
+      // Direct write with a 5-second timeout
+      const codeRef = doc(db, 'inviteCodes', code);
+      
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Connection timed out. Please check your internet.')), 5000)
+      );
 
-    return { code, expiresAt: expiryDate };
+      await Promise.race([
+        setDoc(codeRef, {
+          code,
+          createdBy: userId,
+          createdAt: serverTimestamp(),
+          expiresAt: expiryDate,
+          isUsed: false
+        }),
+        timeoutPromise
+      ]);
+
+      return { code, expiresAt: expiryDate };
+    } catch (err: any) {
+      console.error('[PairingService] Failed to create code:', err);
+      // Fallback: If it's a permission error, it might be because the document ID (code) exists
+      // but usually it's a network/rule issue.
+      throw new Error(err.message || 'Check your internet connection and try again.');
+    }
   },
 
   /**

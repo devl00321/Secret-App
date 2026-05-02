@@ -1,4 +1,4 @@
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { db } from './firebase';
 import { User } from 'firebase/auth';
 
@@ -16,30 +16,46 @@ export interface PartnerProfile {
 }
 
 export const userService = {
+  /**
+   * Syncs user data with Firestore. 
+   * Does NOT throw errors to prevent blocking the app initialization.
+   */
   createUserIfNotExists: async (user: User) => {
     try {
       const userRef = doc(db, 'users', user.uid);
-      const userSnap = await getDoc(userRef);
+      
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Timeout')), 3000)
+      );
+
+      // Use a short-lived check for existence with timeout
+      const userSnap = await Promise.race([
+        getDoc(userRef),
+        timeoutPromise
+      ]) as any;
 
       if (!userSnap.exists()) {
-        await setDoc(userRef, {
+        const userData = {
           id: user.uid,
           email: user.email || null,
           phoneNumber: user.phoneNumber || null,
-          displayName: user.displayName || '',
+          displayName: user.displayName || 'LUVV User',
           photoURL: user.photoURL || '',
           createdAt: serverTimestamp(),
           partnerId: null,
           coupleId: null,
           isOnline: true,
-        });
+        };
+        await setDoc(userRef, userData);
+        return userData;
       } else {
-        // Ensure online status on login
-        await setDoc(userRef, { isOnline: true }, { merge: true });
+        // Update presence even on existing user
+        await updateDoc(userRef, { isOnline: true });
+        return userSnap.data() as PartnerProfile;
       }
     } catch (err) {
-      console.warn('User sync failed (likely offline):', err);
-      // Don't throw, let the app continue with whatever state it has
+      console.warn('[UserService] Sync failed:', err);
+      return null;
     }
   },
 
@@ -48,7 +64,7 @@ export const userService = {
       const userSnap = await getDoc(doc(db, 'users', uid));
       return userSnap.exists() ? (userSnap.data() as PartnerProfile) : null;
     } catch (err) {
-      console.warn('Get user data failed (likely offline):', err);
+      console.warn('[UserService] Get data failed:', err);
       return null;
     }
   },
@@ -56,9 +72,12 @@ export const userService = {
   updateUserPresence: async (uid: string, isOnline: boolean) => {
     try {
       const userRef = doc(db, 'users', uid);
-      await setDoc(userRef, { isOnline }, { merge: true });
+      await updateDoc(userRef, { 
+        isOnline,
+        lastActive: serverTimestamp() 
+      });
     } catch (err) {
-      console.warn('Presence update failed (likely offline):', err);
+      // Silent fail for presence
     }
   }
 };

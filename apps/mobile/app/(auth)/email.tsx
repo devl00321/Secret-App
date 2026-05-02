@@ -26,6 +26,7 @@ export default function EmailLoginScreen() {
         await authService.signup(email.trim(), password);
       }
     } catch (error: any) {
+      console.error('Auth Error Details:', error);
       let friendlyMessage = 'An error occurred during authentication';
       
       if (error.code === 'auth/invalid-credential') {
