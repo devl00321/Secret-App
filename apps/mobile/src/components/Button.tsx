@@ -8,6 +8,7 @@ import {
   TextStyle,
   Platform,
   StyleProp,
+  View
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
@@ -21,6 +22,7 @@ interface ButtonProps {
   disabled?: boolean;
   style?: StyleProp<ViewStyle>;
   textStyle?: StyleProp<TextStyle>;
+  icon?: React.ReactNode;
 }
 
 export const Button = ({ 
@@ -30,7 +32,8 @@ export const Button = ({
   loading = false, 
   disabled = false,
   style,
-  textStyle 
+  textStyle,
+  icon
 }: ButtonProps) => {
   const theme = useTheme();
   const scale = useSharedValue(1);
@@ -75,7 +78,7 @@ export const Button = ({
   return (
     <Animated.View style={[animatedStyle, style]}>
       <TouchableOpacity 
-        style={[styles.base, { borderRadius: theme.radius.lg }, getButtonStyle(), (disabled || loading) && styles.disabled]}
+        style={[styles.base, { borderRadius: theme.radius.lg, flex: style && (style as any).flex ? 1 : undefined }, getButtonStyle(), (disabled || loading) && styles.disabled]}
         onPress={handlePress}
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
@@ -85,7 +88,15 @@ export const Button = ({
         {loading ? (
           <ActivityIndicator color={variant === 'outline' || variant === 'ghost' ? theme.primary : 'white'} />
         ) : (
-          <Text style={[styles.textBase, getTextStyle(), textStyle]}>{title}</Text>
+          <>
+            {icon && <View style={styles.iconContainer}>{icon}</View>}
+            <Text 
+              style={[styles.textBase, getTextStyle(), textStyle, { textAlign: 'center' }]} 
+              numberOfLines={2}
+            >
+              {title}
+            </Text>
+          </>
         )}
       </TouchableOpacity>
     </Animated.View>
@@ -95,7 +106,7 @@ export const Button = ({
 const styles = StyleSheet.create({
   base: {
     paddingVertical: 16,
-    paddingHorizontal: 24,
+    paddingHorizontal: 12,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
@@ -104,6 +115,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '800',
     letterSpacing: 0.5,
+  },
+  iconContainer: {
+    marginRight: 8,
   },
   disabled: {
     opacity: 0.5,

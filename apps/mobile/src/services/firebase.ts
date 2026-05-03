@@ -17,8 +17,8 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 
-// Singleton Auth initialization for React Native
-const getSafeAuth = () => {
+// Initialize Auth with persistence - wrap in try-catch to handle multiple initializations during hot-reload
+const auth = (() => {
   try {
     return getAuth(app);
   } catch (e) {
@@ -26,9 +26,9 @@ const getSafeAuth = () => {
       persistence: getReactNativePersistence(AsyncStorage)
     });
   }
-};
+})();
 
-export const auth = getSafeAuth();
+export { auth };
 
 // Force Long Polling for maximum network compatibility
 const getSafeDb = () => {

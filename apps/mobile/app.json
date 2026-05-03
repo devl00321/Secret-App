@@ -10,10 +10,29 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.ripu.loveapp"
+      "bundleIdentifier": "com.ripu.loveapp",
+      "infoPlist": {
+        "UIBackgroundModes": ["location", "fetch", "remote-notification"],
+        "CADisableMinimumFrameDurationOnPhone": true,
+        "NSLocationWhenInUseUsageDescription": "Allow Love App to access your location while using the app.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Allow Love App to access your location always to keep you and your partner safe.",
+        "NSLocationAlwaysUsageDescription": "Allow Love App to access your location always to keep you and your partner safe."
+      }
     },
     "android": {
       "package": "com.ripu.loveapp",
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_LOCATION"
+      ],
+      "config": {
+        "googleMaps": {
+          "apiKey": "YOUR_GOOGLE_MAPS_API_KEY_HERE"
+        }
+      },
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -39,6 +58,22 @@
           "dark": {
             "backgroundColor": "#000000"
           }
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow Love App to access your location always to keep you and your partner safe.",
+          "locationWhenInUsePermission": "Allow Love App to access your location while using the app.",
+          "locationAlwaysPermission": "Allow Love App to access your location always to keep you and your partner safe.",
+          "isAndroidBackgroundLocationEnabled": true
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/notification-icon.png",
+          "color": "#FF6B6B"
         }
       ]
     ],
