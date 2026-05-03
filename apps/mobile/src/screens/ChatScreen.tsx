@@ -8,8 +8,10 @@ import {
   KeyboardAvoidingView, 
   Platform, 
   Text,
-  Keyboard
+  Keyboard,
+  Alert
 } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Header } from '../components/Header';
 import { MessageBubble } from '../components/MessageBubble';
@@ -26,7 +28,7 @@ export const ChatScreen = () => {
   const flatListRef = useRef<FlatList>(null);
   
   const { user, coupleId } = useAuthStore();
-  const { messages, sendMessage, subscribeToMessages, clearMessages } = useChatStore();
+  const { messages, sendMessage, subscribeToMessages, clearMessages, deleteMessage } = useChatStore();
 
   useEffect(() => {
     if (!coupleId) {
@@ -52,6 +54,43 @@ export const ChatScreen = () => {
     }
   };
 
+  const handleMessageLongPress = (messageId: string, text: string, isMe: boolean) => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+
+    const options = [
+      {
+        text: 'Copy Text',
+        onPress: async () => {
+          await Clipboard.setStringAsync(text);
+        }
+      }
+    ];
+
+    if (isMe) {
+      options.push({
+        text: 'Unsend Message',
+        style: 'destructive' as const,
+        onPress: () => {
+          Alert.alert(
+            'Unsend Message?',
+            'This message will be removed for everyone.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Unsend', style: 'destructive', onPress: () => deleteMessage(messageId) }
+            ]
+          );
+        }
+      });
+    }
+
+    options.push({ text: 'Cancel', style: 'cancel' });
+
+    Alert.alert('Message Options', '', options);
+  };
+
+
   const renderEmptyState = () => (
     <Animated.View entering={FadeIn} style={styles.emptyContainer}>
       <View style={[styles.emptyHeartWrapper, { backgroundColor: theme.surface, ...theme.shadows.soft }]}>
@@ -71,13 +110,17 @@ export const ChatScreen = () => {
           ref={flatListRef}
           data={messages}
           keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <MessageBubble 
-              content={item.text} 
-              isMe={item.senderId === user?.uid} 
-              timestamp={item.createdAt?.toDate?.() ? item.createdAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '...'} 
-            />
-          )}
+          renderItem={({ item }) => {
+            const isMe = item.senderId === user?.uid;
+            return (
+              <MessageBubble 
+                content={item.text} 
+                isMe={isMe} 
+                timestamp={item.createdAt?.toDate?.() ? item.createdAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '...'} 
+                onLongPress={() => handleMessageLongPress(item.id, item.text, isMe)}
+              />
+            );
+          }}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={renderEmptyState}

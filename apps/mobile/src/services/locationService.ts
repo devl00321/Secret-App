@@ -140,6 +140,58 @@ export const locationService = {
             isSharing: data.isSharingLocation ?? true, 
           });
         }
+        if (data.savedPlaces) {
+          useLocationStore.getState().setPartnerSavedPlaces(data.savedPlaces);
+        }
+      }
+    });
+  },
+
+  syncSavedPlaces: async () => {
+    const userId = auth.currentUser?.uid;
+    if (!userId) return;
+    
+    const savedPlaces = useLocationStore.getState().savedPlaces;
+    try {
+      const userRef = doc(db, 'users', userId);
+      await updateDoc(userRef, { savedPlaces });
+    } catch (err) {
+      console.error('[LocationService] Failed to sync saved places:', err);
+    }
+  },
+
+  sendPing: async (partnerId: string) => {
+    const userId = auth.currentUser?.uid;
+    if (!userId || !partnerId) return;
+
+    try {
+      const partnerRef = doc(db, 'users', partnerId);
+      await updateDoc(partnerRef, {
+        lastPing: {
+          from: userId,
+          timestamp: Date.now(),
+          type: 'heartbeat'
+        }
+      });
+    } catch (err) {
+      console.error('[LocationService] Failed to send ping:', err);
+    }
+  },
+
+  subscribeToIncomingPings: (userId: string, onPing: (ping: any) => void) => {
+    const userRef = doc(db, 'users', userId);
+    let lastHandledPing = 0;
+
+    return onSnapshot(userRef, (doc) => {
+      if (doc.exists()) {
+        const data = doc.data();
+        if (data.lastPing && data.lastPing.timestamp > lastHandledPing) {
+          // If the ping is newer than 5 seconds (to avoid old pings on startup)
+          if (Date.now() - data.lastPing.timestamp < 5000) {
+            onPing(data.lastPing);
+          }
+          lastHandledPing = data.lastPing.timestamp;
+        }
       }
     });
   },

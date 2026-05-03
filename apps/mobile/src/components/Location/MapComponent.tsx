@@ -31,6 +31,7 @@ interface MapComponentProps {
   etaToPartner: number | null;
   isSelectingLocation?: boolean;
   onRegionChangeComplete?: (region: any) => void;
+  onMarkerPress?: () => void;
 }
 
 const getPlaceIcon = (type: string, color: string) => {
@@ -62,7 +63,8 @@ export const MapComponent = React.memo(({
   distanceToPartner,
   etaToPartner,
   isSelectingLocation,
-  onRegionChangeComplete
+  onRegionChangeComplete,
+  onMarkerPress
 }: MapComponentProps) => {
   return (
     <View style={{ flex: 1 }}>
@@ -105,6 +107,7 @@ export const MapComponent = React.memo(({
           title="Partner"
           tracksViewChanges={false}
           anchor={{ x: 0.5, y: 1 }}
+          onPress={onMarkerPress}
         >
           <HeartMarker 
             type="partner" 

@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../theme';
 import Animated, { FadeInUp, Layout } from 'react-native-reanimated';
@@ -8,9 +8,10 @@ interface MessageBubbleProps {
   content: string;
   isMe: boolean;
   timestamp: string;
+  onLongPress?: () => void;
 }
 
-export const MessageBubble = ({ content, isMe, timestamp }: MessageBubbleProps) => {
+export const MessageBubble = ({ content, isMe, timestamp, onLongPress }: MessageBubbleProps) => {
   const theme = useTheme();
 
   return (
@@ -19,6 +20,7 @@ export const MessageBubble = ({ content, isMe, timestamp }: MessageBubbleProps) 
       layout={Layout.springify()}
       style={[styles.container, isMe ? styles.myMessage : styles.partnerMessage]}
     >
+      <Pressable onLongPress={onLongPress}>
       {isMe ? (
         <LinearGradient
           colors={[theme.primary, theme.primary + 'DD']}
@@ -43,6 +45,7 @@ export const MessageBubble = ({ content, isMe, timestamp }: MessageBubbleProps) 
       <Text style={[styles.timestamp, { color: theme.textLight }]}>
         {timestamp}
       </Text>
+      </Pressable>
     </Animated.View>
   );
 };

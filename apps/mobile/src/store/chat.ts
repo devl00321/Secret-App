@@ -8,7 +8,9 @@ import {
   onSnapshot, 
   serverTimestamp, 
   limit,
-  Timestamp
+  Timestamp,
+  doc,
+  deleteDoc
 } from 'firebase/firestore';
 import { db } from '../services/firebase';
 
@@ -26,6 +28,7 @@ interface ChatState {
   clearMessages: () => void;
   subscribeToMessages: (coupleId: string) => () => void;
   sendMessage: (text: string, senderId: string, coupleId: string) => Promise<void>;
+  deleteMessage: (messageId: string) => Promise<void>;
 }
 
 export const useChatStore = create<ChatState>((set) => ({
@@ -68,6 +71,14 @@ export const useChatStore = create<ChatState>((set) => ({
       });
     } catch (error) {
       console.error('Error sending message:', error);
+    }
+  },
+
+  deleteMessage: async (messageId) => {
+    try {
+      await deleteDoc(doc(db, 'messages', messageId));
+    } catch (error) {
+      console.error('Error deleting message:', error);
     }
   },
 }));

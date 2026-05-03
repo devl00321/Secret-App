@@ -1,35 +1,43 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { StyleSheet, View, Text, TouchableOpacity, Animated, Platform, Linking, TextInput, FlatList, ActivityIndicator, Dimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Constants from 'expo-constants';
 import { Header } from '../components/Header';
 import { Settings, Navigation2, MapPin, Heart, Battery, Info, Search, Loader2 } from 'lucide-react-native';
 import { useTheme } from '../theme';
 import { useLocationStore } from '../store/useLocationStore';
 import { locationService } from '../services/locationService';
 import * as Notifications from 'expo-notifications';
+import * as Haptics from 'expo-haptics';
 import { HeartMarker } from '../components/Location/HeartMarker';
 import { LocationSettingsModal } from '../components/Location/LocationSettingsModal';
 import { ReachSafelyMode } from '../components/Location/ReachSafelyMode';
 import { useAuthStore } from '../store/useAuthStore';
 import { MapComponent } from '../components/Location/MapComponent';
 import { SavedPlacesModal } from '../components/Location/SavedPlacesModal';
+import { PartnerInfoSheet } from '../components/Location/PartnerInfoSheet';
+import { useRouter } from 'expo-router';
 
 // Configure notifications
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
-});
+// Configure notifications (Guard for Expo Go SDK 53+)
+if (Platform.OS !== 'web' && Constants.appOwnership !== 'expo') {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: false,
+      shouldShowBanner: true,
+      shouldShowList: true,
+    }),
+  });
+}
 
 // REPLACE WITH YOUR GOOGLE MAPS API KEY IN .env FILE
 const GOOGLE_MAPS_APIKEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || '';
 
 export const LocationScreen = () => {
   const theme = useTheme();
+  const router = useRouter();
   const mapRef = useRef<any>(null);
   const { user, partner } = useAuthStore();
   
@@ -44,9 +52,11 @@ export const LocationScreen = () => {
   const updateMetrics = useLocationStore(state => state.updateMetrics);
   const setTripActive = useLocationStore(state => state.setTripActive);
   const savedPlaces = useLocationStore(state => state.savedPlaces);
+  const partnerSavedPlaces = useLocationStore(state => state.partnerSavedPlaces);
 
   const [showSettings, setShowSettings] = useState(false);
   const [showSavedPlaces, setShowSavedPlaces] = useState(false);
+  const [showPartnerInfo, setShowPartnerInfo] = useState(false);
   const [mapReady, setMapReady] = useState(false);
   const [permissionStatus, setPermissionStatus] = useState<{ foreground: boolean; background: boolean } | null>(null);
   const [isNavigating, setIsNavigating] = useState(false);
@@ -55,6 +65,9 @@ export const LocationScreen = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchSuggestions, setSearchSuggestions] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [showPingToast, setShowPingToast] = useState(false);
+  const toastAnim = useRef(new Animated.Value(-100)).current;
 
   const setupLocation = async () => {
     try {
@@ -80,6 +93,52 @@ export const LocationScreen = () => {
       locationService.stopTracking();
     };
   }, [partner?.id]);
+
+  // Sync saved places whenever they change
+  useEffect(() => {
+    locationService.syncSavedPlaces();
+  }, [savedPlaces]);
+
+  // Listen for incoming pings from partner
+  useEffect(() => {
+    if (!user?.uid) return;
+
+    const unsubscribe = locationService.subscribeToIncomingPings(user.uid, (ping) => {
+      // Trigger "Extended Heartbeat" haptics: 15 seconds of rhythmic pulses
+      if (Platform.OS !== 'web') {
+        let count = 0;
+        const maxCycles = 15; // roughly 15-18 seconds total
+        
+        const triggerHeartbeat = () => {
+          if (count >= maxCycles) return;
+          
+          // First thump
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+          
+          // Second thump after 150ms
+          setTimeout(() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+            count++;
+            
+            // Next cycle after 1 second pause
+            setTimeout(triggerHeartbeat, 1000);
+          }, 150);
+        };
+        
+        triggerHeartbeat();
+      }
+      
+      // Show in-app Ping Toast
+      setShowPingToast(true);
+      Animated.sequence([
+        Animated.spring(toastAnim, { toValue: 60, useNativeDriver: true }),
+        Animated.delay(15000), // Match haptic duration
+        Animated.timing(toastAnim, { toValue: -100, duration: 300, useNativeDriver: true })
+      ]).start(() => setShowPingToast(false));
+    });
+
+    return () => unsubscribe();
+  }, [user?.uid]);
 
   // Auto-center on user when location is first found
   useEffect(() => {
@@ -176,6 +235,29 @@ export const LocationScreen = () => {
       console.error('Search error:', error);
     } finally {
       setIsSearching(false);
+    }
+  };
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    // Simulate a data fetch from Firebase
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    await setupLocation();
+    setIsRefreshing(false);
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+  };
+
+  const handleFocusPlace = (place: any) => {
+    if (place.latitude && place.longitude) {
+      mapRef.current?.animateToRegion({
+        latitude: Number(place.latitude),
+        longitude: Number(place.longitude),
+        latitudeDelta: 0.005,
+        longitudeDelta: 0.005,
+      }, 1000);
+      setShowPartnerInfo(false);
     }
   };
 
@@ -286,6 +368,7 @@ export const LocationScreen = () => {
           etaToPartner={etaToPartner}
           isSelectingLocation={isSelectingLocation}
           onRegionChangeComplete={handleRegionChangeComplete}
+          onMarkerPress={() => setShowPartnerInfo(true)}
         />
       </View>
 
@@ -436,6 +519,22 @@ export const LocationScreen = () => {
         </View>
       </SafeAreaView>
 
+      {/* Real-time Ping Toast */}
+      {showPingToast && (
+        <Animated.View 
+          style={[
+            styles.pingToast, 
+            { 
+              backgroundColor: theme.primary,
+              transform: [{ translateY: toastAnim }] 
+            }
+          ]}
+        >
+          <Heart color="white" size={20} fill="white" />
+          <Text style={styles.pingToastText}>Received a heartbeat! ❤️</Text>
+        </Animated.View>
+      )}
+
       <LocationSettingsModal 
         visible={showSettings} 
         onClose={() => setShowSettings(false)} 
@@ -457,6 +556,39 @@ export const LocationScreen = () => {
           setIsSelectingLocation(true);
         }}
         initialLocation={selectedLocation}
+      />
+
+      <PartnerInfoSheet 
+        visible={showPartnerInfo} 
+        onClose={() => setShowPartnerInfo(false)} 
+        partner={partner}
+        partnerLocation={partnerLocation}
+        distance={distanceToPartner}
+        savedPlaces={partnerSavedPlaces || []}
+        onNavigate={openInGoogleMaps}
+        onChat={() => {
+          setShowPartnerInfo(false);
+          router.push('/(tabs)/chat');
+        }}
+        onLocate={() => {
+          if (partnerLocation) {
+            mapRef.current?.animateToRegion({
+              latitude: partnerLocation.latitude,
+              longitude: partnerLocation.longitude,
+              latitudeDelta: 0.01,
+              longitudeDelta: 0.01,
+            }, 1000);
+            setShowPartnerInfo(false);
+          }
+        }}
+        onPing={() => {
+          if (partner?.id) {
+            locationService.sendPing(partner.id);
+          }
+        }}
+        onRefresh={handleRefresh}
+        isRefreshing={isRefreshing}
+        onFocusPlace={handleFocusPlace}
       />
 
       {permissionStatus && !permissionStatus.foreground && (
@@ -626,9 +758,31 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     paddingHorizontal: 16,
     paddingVertical: 10,
-    borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.4)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  pingToast: {
+    position: 'absolute',
+    top: 60,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 30,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 10,
+    zIndex: 10000,
+  },
+  pingToastText: {
+    color: 'white',
+    fontWeight: 'bold',
+    marginLeft: 10,
+    fontSize: 15,
   },
   navButtonText: {
     color: 'white',

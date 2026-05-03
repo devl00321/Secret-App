@@ -30,6 +30,7 @@ interface LocationState {
   distanceToPartner: number | null;
   etaToPartner: number | null; // in minutes
   savedPlaces: SavedPlace[];
+  partnerSavedPlaces: SavedPlace[];
 
   // Actions
   setUserLocation: (location: Location.LocationObject | null) => void;
@@ -41,6 +42,7 @@ interface LocationState {
   addSavedPlace: (place: Omit<SavedPlace, 'id'>) => void;
   removeSavedPlace: (id: string) => void;
   updateSavedPlace: (id: string, place: Partial<SavedPlace>) => void;
+  setPartnerSavedPlaces: (places: SavedPlace[]) => void;
 }
 
 export const useLocationStore = create<LocationState>()(
@@ -55,6 +57,7 @@ export const useLocationStore = create<LocationState>()(
       distanceToPartner: null,
       etaToPartner: null,
       savedPlaces: [],
+      partnerSavedPlaces: [],
 
       setUserLocation: (userLocation) => set({ userLocation }),
       setPartnerLocation: (partnerLocation) => set({ partnerLocation }),
@@ -63,6 +66,8 @@ export const useLocationStore = create<LocationState>()(
       setTripActive: (isTripActive, destination) => set({ isTripActive, destination: destination || null }),
       updateMetrics: (distanceToPartner, etaToPartner) => set({ distanceToPartner, etaToPartner }),
       
+      setPartnerSavedPlaces: (partnerSavedPlaces) => set({ partnerSavedPlaces }),
+
       addSavedPlace: (place) => set((state) => ({
         savedPlaces: [...state.savedPlaces, { ...place, id: Math.random().toString(36).substring(7) }]
       })),
