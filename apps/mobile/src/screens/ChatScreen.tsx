@@ -134,7 +134,7 @@ export const ChatScreen = () => {
 
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? -20 : 0}
       >
         <View style={[styles.inputArea, { backgroundColor: theme.surface, borderTopColor: theme.border }]}>
           <View style={styles.inputRow}>
@@ -217,7 +217,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderTopWidth: 1,
-    paddingBottom: Platform.OS === 'ios' ? 34 : 12,
+    paddingBottom: Platform.OS === 'ios' ? 20 : 12,
   },
   inputRow: {
     flexDirection: 'row',

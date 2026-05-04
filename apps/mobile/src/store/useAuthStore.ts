@@ -5,12 +5,14 @@ import { PartnerProfile } from '../services/userService';
 
 interface AuthState {
   user: User | null;
+  currentUserProfile: PartnerProfile | null;
   partner: (PartnerProfile & { lastMessage: string }) | null;
   coupleId: string | null;
   loading: boolean;
   authMethod: 'phone' | 'email' | 'google' | null;
   confirmationResult: ConfirmationResult | null;
   setUser: (user: User | null) => void;
+  setCurrentUserProfile: (profile: PartnerProfile | null) => void;
   setPartner: (partner: PartnerProfile | null) => void;
   setCoupleId: (id: string | null) => void;
   setLoading: (loading: boolean) => void;
@@ -23,12 +25,14 @@ interface AuthState {
 
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
+  currentUserProfile: null,
   partner: null,
   coupleId: null,
   loading: true,
   authMethod: null,
   confirmationResult: null,
   setUser: (user) => set({ user }),
+  setCurrentUserProfile: (profile) => set({ currentUserProfile: profile }),
   setPartner: (partner) => set({ 
     partner: partner
       ? {
@@ -46,7 +50,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   logout: async () => {
     try {
       await authService.logout();
-      set({ user: null, partner: null, coupleId: null, authMethod: null, confirmationResult: null });
+      set({ user: null, currentUserProfile: null, partner: null, coupleId: null, authMethod: null, confirmationResult: null });
     } catch (error) {
       console.log('Logout Error:', error);
     }

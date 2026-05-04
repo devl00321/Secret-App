@@ -20,11 +20,11 @@ const app = initializeApp(firebaseConfig);
 // Initialize Auth with persistence - wrap in try-catch to handle multiple initializations during hot-reload
 const auth = (() => {
   try {
-    return getAuth(app);
-  } catch (e) {
     return initializeAuth(app, {
       persistence: getReactNativePersistence(AsyncStorage)
     });
+  } catch (e) {
+    return getAuth(app);
   }
 })();
 

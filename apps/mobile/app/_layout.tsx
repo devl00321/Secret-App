@@ -35,7 +35,9 @@ export default function RootLayout() {
   
   const { 
     user, 
-    setUser, 
+    setUser,
+    currentUserProfile,
+    setCurrentUserProfile,
     setPartner, 
     setCoupleId, 
     setLoading, 
@@ -68,6 +70,7 @@ export default function RootLayout() {
         userUnsubscribe = onSnapshot(doc(db, 'users', firebaseUser.uid), async (snapshot) => {
           if (snapshot.exists()) {
             const data = snapshot.data();
+            setCurrentUserProfile(data as import('../src/services/userService').PartnerProfile);
             setCoupleId(data.coupleId || null);
             
             if (data.partnerId) {
@@ -80,12 +83,12 @@ export default function RootLayout() {
           setLoading(false);
           setIsReady(true);
         }, (err) => {
-          console.error('Snapshot error:', err);
+          console.warn('Snapshot error:', err);
           setLoading(false);
           setIsReady(true);
         });
       } catch (error) {
-        console.error('Initial sync error:', error);
+        console.warn('Initial sync error:', error);
         setLoading(false);
         setIsReady(true);
       }
@@ -97,31 +100,58 @@ export default function RootLayout() {
     };
   }, [setCoupleId, setLoading, setPartner, setUser]);
 
+  // 1.1 Couple Data Listener
+  useEffect(() => {
+    if (!coupleId) return;
+
+    const unsubscribe = onSnapshot(doc(db, 'couples', coupleId), (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        if (data.anniversaryDate && currentUserProfile) {
+          setCurrentUserProfile({
+            ...currentUserProfile,
+            anniversaryDate: data.anniversaryDate
+          });
+        }
+      }
+    });
+
+    return () => unsubscribe();
+  }, [coupleId, !!currentUserProfile]);
+
   // 2. Navigation Control
   useEffect(() => {
     if (!isReady) return;
 
     const inAuthGroup = segments[0] === '(auth)';
     const onPairingPage = segments.some(s => s === 'pairing');
+    const onSetupPage = segments.some(s => s === 'setup-profile');
+    
     const paired = !!coupleId;
+    const profileComplete = currentUserProfile?.profileSetupComplete;
 
     if (!user) {
       // If not logged in, ensure we are in the auth group
       if (!inAuthGroup) {
         router.replace('/(auth)');
       }
+    } else if (!profileComplete) {
+      // Logged in but profile setup not complete -> Go to setup
+      if (!onSetupPage) {
+        router.replace('/(auth)/setup-profile');
+      }
     } else if (!paired) {
-      // Logged in but not paired -> Go to pairing
+      // Logged in, profile complete, but not paired -> Go to pairing
       if (!onPairingPage) {
         router.replace('/(auth)/pairing');
       }
     } else {
       // Logged in and paired -> Go to app
-      if (inAuthGroup || onPairingPage) {
+      if (inAuthGroup || onPairingPage || onSetupPage) {
         router.replace('/(app)/(tabs)');
       }
     }
-  }, [user, coupleId, isReady, segments, router]);
+  }, [user, coupleId, currentUserProfile?.profileSetupComplete, isReady, segments, router]);
 
   // 3. Presence Tracking
   useEffect(() => {

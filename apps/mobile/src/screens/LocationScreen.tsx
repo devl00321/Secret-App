@@ -19,17 +19,23 @@ import { PartnerInfoSheet } from '../components/Location/PartnerInfoSheet';
 import { useRouter } from 'expo-router';
 
 // Configure notifications
-// Configure notifications (Guard for Expo Go SDK 53+)
+// Configure notifications safely
 if (Platform.OS !== 'web' && Constants.appOwnership !== 'expo') {
-  Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldShowAlert: true,
-      shouldPlaySound: true,
-      shouldSetBadge: false,
-      shouldShowBanner: true,
-      shouldShowList: true,
-    }),
-  });
+  try {
+    if (Notifications && typeof Notifications.setNotificationHandler === 'function') {
+      Notifications.setNotificationHandler({
+        handleNotification: async () => ({
+          shouldShowAlert: true,
+          shouldPlaySound: true,
+          shouldSetBadge: false,
+          shouldShowBanner: true,
+          shouldShowList: true,
+        }),
+      });
+    }
+  } catch (e) {
+    console.warn('[Notifications] Failed to initialize:', e);
+  }
 }
 
 // REPLACE WITH YOUR GOOGLE MAPS API KEY IN .env FILE
@@ -40,7 +46,7 @@ export const LocationScreen = () => {
   const router = useRouter();
   const mapRef = useRef<any>(null);
   const { user, partner } = useAuthStore();
-  
+
   // Use individual selectors to prevent unnecessary re-renders when other state changes
   const userLocation = useLocationStore(state => state.userLocation);
   const partnerLocation = useLocationStore(state => state.partnerLocation);
@@ -53,6 +59,7 @@ export const LocationScreen = () => {
   const setTripActive = useLocationStore(state => state.setTripActive);
   const savedPlaces = useLocationStore(state => state.savedPlaces);
   const partnerSavedPlaces = useLocationStore(state => state.partnerSavedPlaces);
+  const partnerTrip = useLocationStore(state => state.partnerTrip);
 
   const [showSettings, setShowSettings] = useState(false);
   const [showSavedPlaces, setShowSavedPlaces] = useState(false);
@@ -73,11 +80,11 @@ export const LocationScreen = () => {
     try {
       const status = await locationService.requestPermissions();
       setPermissionStatus(status);
-      
+
       if (status.foreground) {
         await locationService.startTracking();
       }
-      
+
       if (partner?.id) {
         locationService.subscribeToPartner(partner.id);
       }
@@ -88,7 +95,7 @@ export const LocationScreen = () => {
 
   useEffect(() => {
     setupLocation();
-    
+
     return () => {
       locationService.stopTracking();
     };
@@ -103,54 +110,72 @@ export const LocationScreen = () => {
   useEffect(() => {
     if (!user?.uid) return;
 
+    let isMounted = true;
     const unsubscribe = locationService.subscribeToIncomingPings(user.uid, (ping) => {
       // Trigger "Extended Heartbeat" haptics: 15 seconds of rhythmic pulses
-      if (Platform.OS !== 'web') {
+      // ONLY on real devices to prevent simulator hangs
+      if (Platform.OS !== 'web' && Constants.appOwnership !== 'expo' && isMounted) {
         let count = 0;
-        const maxCycles = 15; // roughly 15-18 seconds total
-        
+        const maxCycles = 15;
+
         const triggerHeartbeat = () => {
-          if (count >= maxCycles) return;
-          
-          // First thump
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-          
-          // Second thump after 150ms
+          if (!isMounted || count >= maxCycles) return;
+
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => { });
+
           setTimeout(() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+            if (!isMounted) return;
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => { });
             count++;
-            
-            // Next cycle after 1 second pause
             setTimeout(triggerHeartbeat, 1000);
           }, 150);
         };
-        
+
         triggerHeartbeat();
       }
-      
+
       // Show in-app Ping Toast
-      setShowPingToast(true);
-      Animated.sequence([
-        Animated.spring(toastAnim, { toValue: 60, useNativeDriver: true }),
-        Animated.delay(15000), // Match haptic duration
-        Animated.timing(toastAnim, { toValue: -100, duration: 300, useNativeDriver: true })
-      ]).start(() => setShowPingToast(false));
+      if (isMounted) {
+        setShowPingToast(true);
+        Animated.sequence([
+          Animated.spring(toastAnim, { toValue: 60, useNativeDriver: true }),
+          Animated.delay(15000),
+          Animated.timing(toastAnim, { toValue: -100, duration: 300, useNativeDriver: true })
+        ]).start(() => {
+          if (isMounted) setShowPingToast(false);
+        });
+      }
     });
 
-    return () => unsubscribe();
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
   }, [user?.uid]);
 
-  // Auto-center on user when location is first found
+  // Auto-center prioritize partner when found
+  const hasAutoCentered = useRef(false);
   useEffect(() => {
-    if (userLocation && mapReady && !partnerLocation) {
-      mapRef.current?.animateToRegion?.({
-        latitude: userLocation.coords.latitude,
-        longitude: userLocation.coords.longitude,
-        latitudeDelta: 0.01,
-        longitudeDelta: 0.01,
-      }, 1000);
+    if (mapReady && !hasAutoCentered.current) {
+      if (partnerLocation) {
+        mapRef.current?.animateToRegion?.({
+          latitude: partnerLocation.latitude,
+          longitude: partnerLocation.longitude,
+          latitudeDelta: 0.01,
+          longitudeDelta: 0.01,
+        }, 1000);
+        hasAutoCentered.current = true;
+      } else if (userLocation) {
+        mapRef.current?.animateToRegion?.({
+          latitude: userLocation.coords.latitude,
+          longitude: userLocation.coords.longitude,
+          latitudeDelta: 0.01,
+          longitudeDelta: 0.01,
+        }, 1000);
+        hasAutoCentered.current = true;
+      }
     }
-  }, [!!userLocation, mapReady]);
+  }, [!!partnerLocation, !!userLocation, mapReady]);
 
   // Handle navigation zoom
   useEffect(() => {
@@ -166,28 +191,32 @@ export const LocationScreen = () => {
   }, [isNavigating, !!userLocation, !!partnerLocation, mapReady]);
 
   const centerMap = () => {
+    if (!mapReady || !userLocation) return;
+
+    mapRef.current?.animateToRegion?.({
+      latitude: userLocation.coords.latitude,
+      longitude: userLocation.coords.longitude,
+      latitudeDelta: 0.01,
+      longitudeDelta: 0.01,
+    }, 1000);
+
+    if (isNavigating) setIsNavigating(false); // Stop nav if user manually centers
+  };
+
+  const centerOnPartner = () => {
     if (!mapReady) return;
 
-    if (userLocation && partnerLocation) {
-      // Fit both if both available
-      mapRef.current?.fitToCoordinates?.([
-        { latitude: userLocation.coords.latitude, longitude: userLocation.coords.longitude },
-        { latitude: partnerLocation.latitude, longitude: partnerLocation.longitude }
-      ], {
-        edgePadding: { top: 100, right: 50, bottom: 450, left: 50 },
-        animated: true,
-      });
-    } else if (userLocation) {
-      // Center on user if only user available
-      mapRef.current?.animateToRegion?.({
-        latitude: userLocation.coords.latitude,
-        longitude: userLocation.coords.longitude,
-        latitudeDelta: 0.01,
-        longitudeDelta: 0.01,
-      }, 1000);
+    if (!partnerLocation) {
+      alert("Locating your partner... They might need to open their app! 🔍");
+      return;
     }
-    
-    if (isNavigating) setIsNavigating(false); // Stop nav if user manually centers
+
+    mapRef.current?.animateToRegion?.({
+      latitude: partnerLocation.latitude,
+      longitude: partnerLocation.longitude,
+      latitudeDelta: 0.01,
+      longitudeDelta: 0.01,
+    }, 1000);
   };
 
   const openInGoogleMaps = () => {
@@ -221,7 +250,7 @@ export const LocationScreen = () => {
       const results = await locationService.geocode(query);
       if (results && results.length > 0) {
         // Map native results to a common format
-        const suggestions = results.slice(0, 5).map((res, index) => ({
+        const suggestions = results.slice(0, 5).map((res: any, index: number) => ({
           place_id: `native-${index}-${res.latitude}-${res.longitude}`,
           description: `${query} (${res.city || res.region || 'Result'})`,
           coords: {
@@ -283,11 +312,11 @@ export const LocationScreen = () => {
     const R = 6371; // Radius of the earth in km
     const dLat = (lat2 - lat1) * Math.PI / 180;
     const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a = 
-      Math.sin(dLat/2) * Math.sin(dLat/2) +
-      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
-      Math.sin(dLon/2) * Math.sin(dLon/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return R * c;
   };
 
@@ -311,7 +340,7 @@ export const LocationScreen = () => {
         partnerLocation.latitude,
         partnerLocation.longitude
       );
-      
+
       // If we don't have route ETA, estimate based on 30km/h avg speed
       const estimatedEta = etaToPartner || (dist / 30) * 60;
       updateMetrics(dist, estimatedEta);
@@ -332,9 +361,9 @@ export const LocationScreen = () => {
       }
     }
   }, [
-    userLocation?.coords.latitude, 
-    userLocation?.coords.longitude, 
-    partnerLocation?.latitude, 
+    userLocation?.coords.latitude,
+    userLocation?.coords.longitude,
+    partnerLocation?.latitude,
     partnerLocation?.longitude,
     isTripActive,
     destination?.name
@@ -386,7 +415,7 @@ export const LocationScreen = () => {
                     {distanceToPartner?.toFixed(1)} km • {Math.round(etaToPartner || 0)} min remaining
                   </Text>
                 </View>
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={styles.navCloseButton}
                   onPress={() => setIsNavigating(false)}
                 >
@@ -395,13 +424,19 @@ export const LocationScreen = () => {
               </View>
             ) : (
               <>
-                <TouchableOpacity 
-                  style={[styles.iconButton, { backgroundColor: theme.surface }]}
-                  onPress={() => setShowSettings(true)}
-                >
-                  <Settings size={22} color={theme.text} />
-                </TouchableOpacity>
-                
+                <View style={{ alignItems: 'center' }}>
+                  <TouchableOpacity
+                    style={[styles.iconButton, { backgroundColor: theme.surface }]}
+                    onPress={() => setShowSettings(true)}
+                  >
+                    <Settings size={22} color={theme.text} />
+                  </TouchableOpacity>
+
+                  <View style={{ marginTop: 12 }}>
+                    {!isTripActive && <ReachSafelyMode />}
+                  </View>
+                </View>
+
                 <View style={[styles.statusBadge, { backgroundColor: theme.surface }]}>
                   <View style={[styles.pulseDot, { backgroundColor: isSharing ? theme.primary : theme.textLight }]} />
                   <Text style={[styles.statusText, { color: theme.text }]}>
@@ -409,16 +444,25 @@ export const LocationScreen = () => {
                   </Text>
                 </View>
 
-                <TouchableOpacity 
-                  style={[styles.iconButton, { backgroundColor: theme.surface }]}
-                  onPress={centerMap}
-                >
-                  <Navigation2 size={22} color={theme.text} />
-                </TouchableOpacity>
+                <View style={{ alignItems: 'center' }}>
+                  <TouchableOpacity
+                    style={[styles.iconButton, { backgroundColor: theme.surface }]}
+                    onPress={centerMap}
+                  >
+                    <Navigation2 size={22} color={theme.text} />
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.iconButton, { backgroundColor: theme.surface, marginTop: 12 }]}
+                    onPress={centerOnPartner}
+                  >
+                    <Heart size={22} color={theme.primary} fill={theme.primary + '20'} />
+                  </TouchableOpacity>
+                </View>
               </>
             )}
           </View>
-          
+
           {isSelectingLocation && (
             <View style={[styles.selectionBanner, { backgroundColor: theme.surface }]}>
               <View style={styles.searchBar}>
@@ -436,8 +480,8 @@ export const LocationScreen = () => {
               {searchSuggestions.length > 0 && (
                 <View style={[styles.suggestionsList, { backgroundColor: theme.surface }]}>
                   {searchSuggestions.map((item) => (
-                    <TouchableOpacity 
-                      key={item.place_id} 
+                    <TouchableOpacity
+                      key={item.place_id}
                       style={styles.suggestionItem}
                       onPress={() => goToPlace(item)}
                     >
@@ -457,7 +501,7 @@ export const LocationScreen = () => {
                 </Text>
               </View>
               <View style={styles.selectionButtons}>
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={[styles.cancelSelectBtn, { backgroundColor: theme.border }]}
                   onPress={() => {
                     setIsSelectingLocation(false);
@@ -466,7 +510,7 @@ export const LocationScreen = () => {
                 >
                   <Text style={{ color: theme.text }}>Cancel</Text>
                 </TouchableOpacity>
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={[styles.confirmSelectBtn, { backgroundColor: theme.primary }]}
                   onPress={() => {
                     setIsSelectingLocation(false);
@@ -482,8 +526,8 @@ export const LocationScreen = () => {
         </View>
 
         <View style={styles.bottomSheet}>
-          <ReachSafelyMode />
-          
+          {isTripActive && <ReachSafelyMode />}
+
           {!isNavigating && (
             <View style={[styles.floatingInfoCard, { backgroundColor: theme.surface }]}>
               <View style={styles.infoRow}>
@@ -492,7 +536,7 @@ export const LocationScreen = () => {
                     <Heart size={18} color={theme.primary} />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={[styles.emotionalText, { color: theme.text }]} numberOfLines={1}>
+                    <Text style={[styles.emotionalText, { color: theme.text }]}>
                       {getEmotionalStatus()}
                     </Text>
                     {etaToPartner !== null && etaToPartner !== undefined && (
@@ -502,9 +546,22 @@ export const LocationScreen = () => {
                     )}
                   </View>
                 </View>
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={[styles.navButton, { backgroundColor: isNavigating ? theme.textLight : theme.primary }]}
-                  onPress={() => setIsNavigating(!isNavigating)}
+                  onPress={() => {
+                    const newState = !isNavigating;
+                    setIsNavigating(newState);
+                    if (newState && userLocation && partnerLocation) {
+                      // Zoom to fit both user and partner
+                      mapRef.current?.fitToCoordinates([
+                        { latitude: userLocation.coords.latitude, longitude: userLocation.coords.longitude },
+                        { latitude: partnerLocation.latitude, longitude: partnerLocation.longitude }
+                      ], {
+                        edgePadding: { top: 150, right: 50, bottom: 150, left: 50 },
+                        animated: true,
+                      });
+                    }
+                  }}
                   activeOpacity={0.8}
                 >
                   <Navigation2 size={14} color="white" style={{ marginRight: 4 }} />
@@ -513,7 +570,7 @@ export const LocationScreen = () => {
               </View>
             </View>
           )}
-          
+
           {/* Spacer for Tab Bar */}
           <View style={{ height: 110 }} />
         </View>
@@ -521,12 +578,12 @@ export const LocationScreen = () => {
 
       {/* Real-time Ping Toast */}
       {showPingToast && (
-        <Animated.View 
+        <Animated.View
           style={[
-            styles.pingToast, 
-            { 
+            styles.pingToast,
+            {
               backgroundColor: theme.primary,
-              transform: [{ translateY: toastAnim }] 
+              transform: [{ translateY: toastAnim }]
             }
           ]}
         >
@@ -535,9 +592,9 @@ export const LocationScreen = () => {
         </Animated.View>
       )}
 
-      <LocationSettingsModal 
-        visible={showSettings} 
-        onClose={() => setShowSettings(false)} 
+      <LocationSettingsModal
+        visible={showSettings}
+        onClose={() => setShowSettings(false)}
         onOpenSavedPlaces={() => {
           setShowSettings(false);
           // Small delay to allow previous modal to close properly
@@ -545,8 +602,8 @@ export const LocationScreen = () => {
         }}
       />
 
-      <SavedPlacesModal 
-        visible={showSavedPlaces} 
+      <SavedPlacesModal
+        visible={showSavedPlaces}
         onClose={() => {
           setShowSavedPlaces(false);
           setSelectedLocation(null);
@@ -558,17 +615,18 @@ export const LocationScreen = () => {
         initialLocation={selectedLocation}
       />
 
-      <PartnerInfoSheet 
-        visible={showPartnerInfo} 
-        onClose={() => setShowPartnerInfo(false)} 
+      <PartnerInfoSheet
+        visible={showPartnerInfo}
+        onClose={() => setShowPartnerInfo(false)}
         partner={partner}
         partnerLocation={partnerLocation}
         distance={distanceToPartner}
         savedPlaces={partnerSavedPlaces || []}
+        partnerTrip={partnerTrip}
         onNavigate={openInGoogleMaps}
         onChat={() => {
           setShowPartnerInfo(false);
-          router.push('/(tabs)/chat');
+          router.push('/(app)/chat/main');
         }}
         onLocate={() => {
           if (partnerLocation) {
@@ -598,13 +656,13 @@ export const LocationScreen = () => {
           <Text style={[styles.permissionDesc, { color: theme.textLight }]}>
             To keep you and your partner safe, we need access to your location while you're using the app.
           </Text>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={[styles.permissionButton, { backgroundColor: theme.primary }]}
             onPress={setupLocation}
           >
             <Text style={styles.permissionButtonText}>Grant Permission</Text>
           </TouchableOpacity>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={{ marginTop: 20 }}
             onPress={() => Linking.openSettings()}
           >
@@ -678,17 +736,20 @@ const styles = StyleSheet.create({
   },
   floatingInfoCard: {
     paddingHorizontal: 20,
-    paddingVertical: 14,
+    paddingVertical: 10,
     borderRadius: 24,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.1,
-    shadowRadius: 15,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 15 },
+    shadowOpacity: 0.08,
+    shadowRadius: 30,
+    elevation: 10,
     borderWidth: 1,
     borderColor: 'rgba(0,0,0,0.05)',
     marginHorizontal: 20,
-    marginBottom: 10,
+    position: 'absolute',
+    bottom: 85,
+    left: 0,
+    right: 0,
   },
   iconButton: {
     width: 45,
@@ -761,6 +822,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.4)',
     alignItems: 'center',
     justifyContent: 'center',
+    borderRadius: 20,
   },
   pingToast: {
     position: 'absolute',
@@ -772,10 +834,10 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 30,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 10,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.12,
+    shadowRadius: 20,
+    elevation: 12,
     zIndex: 10000,
   },
   pingToastText: {

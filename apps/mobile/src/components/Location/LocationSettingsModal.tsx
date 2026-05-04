@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Modal, TouchableOpacity, Switch } from 'react-native';
+import { View, Text, StyleSheet, Modal, TouchableOpacity, Switch, TouchableWithoutFeedback } from 'react-native';
 import { X, Clock, Shield, MapPin, ChevronRight } from 'lucide-react-native';
 import { useTheme } from '../../theme';
 import { Button } from '../Button';
@@ -26,10 +26,13 @@ export const LocationSettingsModal = ({ visible, onClose, onOpenSavedPlaces }: L
       <Modal
         visible={visible}
         transparent
-        animationType="slide"
+        animationType="fade"
         onRequestClose={onClose}
       >
         <View style={styles.overlay}>
+          <TouchableWithoutFeedback onPress={onClose}>
+            <View style={StyleSheet.absoluteFillObject} />
+          </TouchableWithoutFeedback>
           <View style={[styles.content, { backgroundColor: theme.surface }]}>
             <View style={styles.header}>
               <Text style={[styles.title, { color: theme.text }]}>Privacy Settings 🔒</Text>
@@ -129,6 +132,11 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 30,
     padding: 25,
     paddingBottom: 40,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -15 },
+    shadowOpacity: 0.08,
+    shadowRadius: 40,
+    elevation: 20,
   },
   header: {
     flexDirection: 'row',

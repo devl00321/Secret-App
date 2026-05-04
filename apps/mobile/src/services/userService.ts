@@ -13,6 +13,11 @@ export interface PartnerProfile {
   coupleId: string | null;
   isOnline: boolean;
   lastMessage?: string;
+  gender?: string;
+  dob?: string; // ISO String
+  profileSetupComplete?: boolean;
+  partnerNickname?: string;
+  anniversaryDate?: string; // DD/MM/YYYY
 }
 
 export const userService = {
@@ -45,6 +50,7 @@ export const userService = {
           partnerId: null,
           coupleId: null,
           isOnline: true,
+          profileSetupComplete: false,
         };
         await setDoc(userRef, userData);
         return userData;
@@ -78,6 +84,36 @@ export const userService = {
       });
     } catch (err) {
       // Silent fail for presence
+    }
+  },
+
+  updateUserProfile: async (uid: string, data: Partial<PartnerProfile>) => {
+    try {
+      const userRef = doc(db, 'users', uid);
+      await updateDoc(userRef, data);
+    } catch (err) {
+      console.warn('[UserService] Profile update failed:', err);
+      throw err;
+    }
+  },
+
+  updatePartnerNickname: async (uid: string, nickname: string) => {
+    try {
+      const userRef = doc(db, 'users', uid);
+      await updateDoc(userRef, { partnerNickname: nickname });
+    } catch (err) {
+      console.warn('[UserService] Nickname update failed:', err);
+      throw err;
+    }
+  },
+
+  updateCoupleData: async (coupleId: string, data: any) => {
+    try {
+      const coupleRef = doc(db, 'couples', coupleId);
+      await updateDoc(coupleRef, data);
+    } catch (err) {
+      console.warn('[UserService] Couple update failed:', err);
+      throw err;
     }
   }
 };

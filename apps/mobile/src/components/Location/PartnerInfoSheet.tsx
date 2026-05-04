@@ -52,6 +52,10 @@ interface PartnerInfoSheetProps {
   savedPlaces: any[];
   onFocusPlace: (place: any) => void;
   isRefreshing?: boolean;
+  partnerTrip?: {
+    isActive: boolean;
+    destination: { latitude: number; longitude: number; name?: string } | null;
+  } | null;
 }
 
 export const PartnerInfoSheet = ({
@@ -67,7 +71,8 @@ export const PartnerInfoSheet = ({
   distance,
   savedPlaces,
   onFocusPlace,
-  isRefreshing = false
+  isRefreshing = false,
+  partnerTrip
 }: PartnerInfoSheetProps) => {
   const theme = useTheme();
   const panY = useRef(new Animated.Value(SNAP_BOTTOM)).current;
@@ -253,6 +258,23 @@ export const PartnerInfoSheet = ({
             showsVerticalScrollIndicator={false}
             scrollEnabled={snapState === 'top'}
           >
+            {/* Active Trip Banner */}
+            {partnerTrip?.isActive && (
+              <View style={[styles.tripBanner, { backgroundColor: theme.primary + '10', borderColor: theme.primary + '30' }]}>
+                <View style={[styles.tripIcon, { backgroundColor: theme.primary }]}>
+                  <Navigation2 size={20} color="white" />
+                </View>
+                <View style={styles.tripInfo}>
+                  <Text style={[styles.tripTitle, { color: theme.text }]}>
+                    Heading to {partnerTrip.destination?.name || 'Destination'}
+                  </Text>
+                  <Text style={[styles.tripStatus, { color: theme.primary }]}>
+                    Live tracking active • Safe 🏃‍♂️
+                  </Text>
+                </View>
+              </View>
+            )}
+
             {/* Action Cards Section */}
             <View style={styles.actionGrid}>
               <TouchableOpacity 
@@ -332,7 +354,7 @@ export const PartnerInfoSheet = ({
             </View>
 
             {savedPlaces && savedPlaces.length > 0 ? (
-              savedPlaces.map((place, index) => (
+              savedPlaces.map((place: any, index: number) => (
                 <TouchableOpacity 
                   key={index}
                   style={[styles.placeRow, { backgroundColor: theme.surface }]}
@@ -379,9 +401,9 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 32,
     borderTopRightRadius: 32,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
+    shadowOffset: { width: 0, height: -15 },
+    shadowOpacity: 0.08,
+    shadowRadius: 40,
     elevation: 20,
     position: 'absolute',
   },
@@ -529,5 +551,35 @@ const styles = StyleSheet.create({
   emptyPlaces: {
     padding: 20,
     alignItems: 'center',
+  },
+  tripBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 24,
+    marginBottom: 20,
+    borderWidth: 1,
+    marginHorizontal: 4,
+  },
+  tripIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 16,
+  },
+  tripInfo: {
+    flex: 1,
+  },
+  tripTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    marginBottom: 2,
+  },
+  tripStatus: {
+    fontSize: 12,
+    fontWeight: '700',
+    opacity: 0.8,
   }
 });

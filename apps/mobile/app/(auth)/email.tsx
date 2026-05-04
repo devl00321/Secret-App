@@ -26,26 +26,29 @@ export default function EmailLoginScreen() {
         await authService.signup(email.trim(), password);
       }
     } catch (error: any) {
-      console.error('Auth Error Details:', error);
+      // Use console.warn instead of console.error to avoid the red error box in development
+      // while still keeping visibility in the console logs.
+      console.warn('Auth Error Details:', error.code, error.message);
+      
       let friendlyMessage = 'An error occurred during authentication';
       
       if (error.code === 'auth/invalid-credential') {
         friendlyMessage = isLogin 
-          ? 'Invalid email or password. Please try again.' 
+          ? 'Invalid email or password. If you don\'t have an account, please sign up first.' 
           : 'This email is already in use or the password is too weak.';
       } else if (error.code === 'auth/user-not-found') {
-        friendlyMessage = 'No account found with this email.';
+        friendlyMessage = 'No account found with this email. Please sign up.';
       } else if (error.code === 'auth/wrong-password') {
         friendlyMessage = 'Incorrect password. Please try again.';
       } else if (error.code === 'auth/email-already-in-use') {
-        friendlyMessage = 'An account already exists with this email.';
+        friendlyMessage = 'An account already exists with this email. Try logging in instead.';
       } else if (error.code === 'auth/weak-password') {
         friendlyMessage = 'Password should be at least 6 characters.';
       } else if (error.code === 'auth/invalid-email') {
         friendlyMessage = 'Please enter a valid email address.';
       }
 
-      Alert.alert('Auth Error', friendlyMessage);
+      Alert.alert(isLogin ? 'Login Failed' : 'Sign Up Failed', friendlyMessage);
     } finally {
       setLoading(false);
     }

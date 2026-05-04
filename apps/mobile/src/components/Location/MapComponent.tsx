@@ -13,7 +13,7 @@ import {
   Dumbbell, 
   MapPin 
 } from 'lucide-react-native';
-import { View, Text } from 'react-native';
+import { View, Text, Platform } from 'react-native';
 
 interface MapComponentProps {
   mapRef: React.RefObject<any>;
@@ -66,12 +66,24 @@ export const MapComponent = React.memo(({
   onRegionChangeComplete,
   onMarkerPress
 }: MapComponentProps) => {
+  const [shouldTrack, setShouldTrack] = React.useState(true);
+
+  React.useEffect(() => {
+    // Android Fix: Keep tracking views for a brief moment to ensure they render
+    if (Platform.OS === 'android') {
+      const timer = setTimeout(() => setShouldTrack(false), 2000);
+      return () => clearTimeout(timer);
+    } else {
+      setShouldTrack(false);
+    }
+  }, []);
+
   return (
     <View style={{ flex: 1 }}>
       <MapView
         ref={mapRef}
         style={{ flex: 1 }}
-        provider={PROVIDER_GOOGLE}
+        provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
         onMapReady={onMapReady}
         onRegionChangeComplete={onRegionChangeComplete}
       showsUserLocation={true}
@@ -91,8 +103,8 @@ export const MapComponent = React.memo(({
             longitude: userLocation.coords.longitude,
           }}
           title="Me"
-          tracksViewChanges={false}
-          anchor={{ x: 0.5, y: 1 }}
+          tracksViewChanges={shouldTrack}
+          anchor={{ x: 0.5, y: 0.5 }}
         >
           <HeartMarker type="me" initial={user?.displayName?.[0] || 'M'} />
         </Marker>
@@ -105,8 +117,8 @@ export const MapComponent = React.memo(({
             longitude: partnerLocation.longitude,
           }}
           title="Partner"
-          tracksViewChanges={false}
-          anchor={{ x: 0.5, y: 1 }}
+          tracksViewChanges={shouldTrack}
+          anchor={{ x: 0.5, y: 0.5 }}
           onPress={onMarkerPress}
         >
           <HeartMarker 
@@ -151,24 +163,47 @@ export const MapComponent = React.memo(({
               latitude: Number(place.latitude),
               longitude: Number(place.longitude),
             }}
-            title={place.name}
-            description={place.type}
-            anchor={{ x: 0.5, y: 1 }}
-            tracksViewChanges={false} // CRITICAL: Stop redundant re-renders
+            anchor={{ x: 0.5, y: 0.5 }}
+            tracksViewChanges={shouldTrack}
           >
-            <View style={{ 
-              backgroundColor: theme.surface, 
-              padding: 6, 
-              borderRadius: 20, 
-              borderWidth: 2, 
-              borderColor: theme.primary,
-              shadowColor: '#000',
-              shadowOffset: { width: 0, height: 2 },
-              shadowOpacity: 0.25,
-              shadowRadius: 3.84,
-              elevation: 5,
-            }}>
-              {getPlaceIcon(place.type, theme.primary)}
+            <View style={{ alignItems: 'center' }}>
+              {/* Persistent Tag Label */}
+              <View style={{
+                backgroundColor: 'white',
+                paddingHorizontal: 8,
+                paddingVertical: 4,
+                borderRadius: 10,
+                marginBottom: 4,
+                borderWidth: 1,
+                borderColor: theme.border,
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.1,
+                shadowRadius: 2,
+                elevation: 3,
+              }}>
+                <Text style={{ 
+                  fontSize: 10, 
+                  fontWeight: '900', 
+                  color: theme.text,
+                  textTransform: 'uppercase'
+                }}>{place.name}</Text>
+              </View>
+
+              <View style={{ 
+                backgroundColor: theme.surface, 
+                padding: 6, 
+                borderRadius: 20, 
+                borderWidth: 2, 
+                borderColor: theme.primary,
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.25,
+                shadowRadius: 3.84,
+                elevation: 5,
+              }}>
+                {getPlaceIcon(place.type, theme.primary)}
+              </View>
             </View>
           </Marker>
           <Circle

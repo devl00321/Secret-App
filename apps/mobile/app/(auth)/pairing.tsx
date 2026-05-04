@@ -65,7 +65,7 @@ export default function PairingScreen() {
       console.log('Code generated successfully:', result.code);
       setGeneratedCode(result);
     } catch (error: any) {
-      console.error('Generation error in UI:', error);
+      console.warn('Generation error in UI:', error);
       Alert.alert('Error', error.message || 'Failed to generate code.');
     } finally {
       setLoading(false);

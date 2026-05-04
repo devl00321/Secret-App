@@ -26,16 +26,27 @@ async function updateLocationInFirebase(location: Location.LocationObject) {
   const userId = auth.currentUser?.uid;
   if (!userId) return;
 
-  const batteryLevel = await Battery.getBatteryLevelAsync();
+  let batteryLevel = -1;
+  try {
+    batteryLevel = await Battery.getBatteryLevelAsync();
+  } catch (e) {
+    // Battery check failed (likely on simulator)
+  }
   
   try {
+    const { isTripActive, destination } = useLocationStore.getState();
     const userRef = doc(db, 'users', userId);
+    
     await updateDoc(userRef, {
       location: {
         latitude: location.coords.latitude,
         longitude: location.coords.longitude,
         timestamp: location.timestamp,
         batteryLevel: Math.round(batteryLevel * 100),
+      },
+      trip: {
+        isActive: isTripActive,
+        destination: destination,
       },
       lastSeen: serverTimestamp(),
     });
@@ -143,6 +154,9 @@ export const locationService = {
         if (data.savedPlaces) {
           useLocationStore.getState().setPartnerSavedPlaces(data.savedPlaces);
         }
+        if (data.trip) {
+          useLocationStore.getState().setPartnerTrip(data.trip);
+        }
       }
     });
   },
@@ -157,6 +171,24 @@ export const locationService = {
       await updateDoc(userRef, { savedPlaces });
     } catch (err) {
       console.error('[LocationService] Failed to sync saved places:', err);
+    }
+  },
+
+  syncTripStatus: async () => {
+    const userId = auth.currentUser?.uid;
+    if (!userId) return;
+
+    const { isTripActive, destination } = useLocationStore.getState();
+    try {
+      const userRef = doc(db, 'users', userId);
+      await updateDoc(userRef, {
+        trip: {
+          isActive: isTripActive,
+          destination: destination,
+        }
+      });
+    } catch (err) {
+      console.error('[LocationService] Failed to sync trip status:', err);
     }
   },
 

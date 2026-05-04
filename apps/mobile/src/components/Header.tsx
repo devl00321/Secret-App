@@ -45,7 +45,7 @@ export const Header = ({ title, showBack = false, rightElement }: HeaderProps) =
 
 const styles = StyleSheet.create({
   container: {
-    paddingTop: Platform.OS === 'ios' ? 50 : 40,
+    paddingTop: Platform.OS === 'ios' ? 10 : 10,
     paddingBottom: 15,
     borderBottomWidth: 1,
     zIndex: 10,
