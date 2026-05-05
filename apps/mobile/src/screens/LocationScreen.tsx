@@ -7,7 +7,7 @@ import { Settings, Navigation2, MapPin, Heart, Battery, Info, Search, Loader2 } 
 import { useTheme } from '../theme';
 import { useLocationStore } from '../store/useLocationStore';
 import { locationService } from '../services/locationService';
-import * as Notifications from 'expo-notifications';
+import { notificationService } from '../services/notificationService';
 import * as Haptics from 'expo-haptics';
 import { HeartMarker } from '../components/Location/HeartMarker';
 import { LocationSettingsModal } from '../components/Location/LocationSettingsModal';
@@ -18,25 +18,8 @@ import { SavedPlacesModal } from '../components/Location/SavedPlacesModal';
 import { PartnerInfoSheet } from '../components/Location/PartnerInfoSheet';
 import { useRouter } from 'expo-router';
 
-// Configure notifications
-// Configure notifications safely
-if (Platform.OS !== 'web' && Constants.appOwnership !== 'expo') {
-  try {
-    if (Notifications && typeof Notifications.setNotificationHandler === 'function') {
-      Notifications.setNotificationHandler({
-        handleNotification: async () => ({
-          shouldShowAlert: true,
-          shouldPlaySound: true,
-          shouldSetBadge: false,
-          shouldShowBanner: true,
-          shouldShowList: true,
-        }),
-      });
-    }
-  } catch (e) {
-    console.warn('[Notifications] Failed to initialize:', e);
-  }
-}
+// Initialize notifications
+notificationService.init();
 
 // REPLACE WITH YOUR GOOGLE MAPS API KEY IN .env FILE
 const GOOGLE_MAPS_APIKEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || '';
@@ -113,20 +96,21 @@ export const LocationScreen = () => {
     let isMounted = true;
     const unsubscribe = locationService.subscribeToIncomingPings(user.uid, (ping) => {
       // Trigger "Extended Heartbeat" haptics: 15 seconds of rhythmic pulses
-      // ONLY on real devices to prevent simulator hangs
-      if (Platform.OS !== 'web' && Constants.appOwnership !== 'expo' && isMounted) {
+      if (Platform.OS !== 'web' && isMounted) {
         let count = 0;
         const maxCycles = 15;
 
         const triggerHeartbeat = () => {
           if (!isMounted || count >= maxCycles) return;
 
+          // Double pulse for a heartbeat feel
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => { });
-
+          
           setTimeout(() => {
             if (!isMounted) return;
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => { });
             count++;
+            // Next heartbeat in 1 second
             setTimeout(triggerHeartbeat, 1000);
           }, 150);
         };
@@ -321,13 +305,10 @@ export const LocationScreen = () => {
   };
 
   const sendArrivalNotification = async (placeName: string) => {
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title: `Reached ${placeName}! 🏠`,
-        body: `We've notified ${partner?.displayName || 'your partner'} that you reached ${placeName} safely.`,
-      },
-      trigger: null,
-    });
+    await notificationService.sendLocalNotification(
+      `Reached ${placeName}! 🏠`,
+      `We've notified ${partner?.displayName || 'your partner'} that you reached ${placeName} safely.`
+    );
     // In a real app, you would also trigger a Firestore update that sends a push to the partner
   };
 

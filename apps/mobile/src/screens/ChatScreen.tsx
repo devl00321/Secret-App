@@ -9,7 +9,8 @@ import {
   Platform, 
   Text,
   Keyboard,
-  Alert
+  Alert,
+  AlertButton
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -59,11 +60,11 @@ export const ChatScreen = () => {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
 
-    const options = [
+    const options: AlertButton[] = [
       {
         text: 'Copy Text',
-        onPress: async () => {
-          await Clipboard.setStringAsync(text);
+        onPress: () => {
+          Clipboard.setStringAsync(text);
         }
       }
     ];
@@ -71,7 +72,7 @@ export const ChatScreen = () => {
     if (isMe) {
       options.push({
         text: 'Unsend Message',
-        style: 'destructive' as const,
+        style: 'destructive',
         onPress: () => {
           Alert.alert(
             'Unsend Message?',
@@ -85,7 +86,7 @@ export const ChatScreen = () => {
       });
     }
 
-    options.push({ text: 'Cancel', style: 'cancel' });
+    options.push({ text: 'Cancel', style: 'cancel', onPress: () => {} });
 
     Alert.alert('Message Options', '', options);
   };

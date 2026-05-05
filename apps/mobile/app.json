@@ -12,7 +12,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.ripu.loveapp",
       "infoPlist": {
-        "UIBackgroundModes": ["location", "fetch", "remote-notification"],
+        "UIBackgroundModes": ["location", "fetch"],
         "CADisableMinimumFrameDurationOnPhone": true,
         "NSLocationWhenInUseUsageDescription": "Allow Love App to access your location while using the app.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Allow Love App to access your location always to keep you and your partner safe.",

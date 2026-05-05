@@ -29,6 +29,7 @@ interface LocationState {
   destination: { latitude: number; longitude: number; name?: string } | null;
   distanceToPartner: number | null;
   etaToPartner: number | null; // in minutes
+  savedPlaces: SavedPlace[];
   partnerSavedPlaces: SavedPlace[];
   partnerTrip: {
     isActive: boolean;

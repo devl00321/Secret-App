@@ -161,7 +161,7 @@ export const ReachSafelyMode = () => {
                   </Text>
                 </View>
               ) : (
-                savedPlaces.map((place) => {
+                savedPlaces.map((place: SavedPlace) => {
                   const Icon = PLACE_ICONS[place.type] || MapPin;
                   return (
                     <TouchableOpacity
