@@ -24,6 +24,7 @@ import {
   RefreshCcw, 
   ChevronRight,
   MessageCircle,
+  Phone,
   Wifi,
   WifiOff
 } from 'lucide-react-native';
@@ -47,6 +48,7 @@ interface PartnerInfoSheetProps {
   onPing: () => void;
   onRefresh: () => void;
   partner: any;
+  partnerName: string;
   partnerLocation: any;
   distance: number | null;
   savedPlaces: any[];
@@ -67,6 +69,7 @@ export const PartnerInfoSheet = ({
   onPing,
   onRefresh,
   partner,
+  partnerName,
   partnerLocation,
   distance,
   savedPlaces,
@@ -205,7 +208,7 @@ export const PartnerInfoSheet = ({
             <View style={styles.handle} />
             <View style={styles.headerMain}>
               <View style={{ flex: 1 }}>
-                <Text style={[styles.partnerName, { color: theme.text }]}>{partner?.displayName || 'Partner'}</Text>
+                <Text style={[styles.partnerName, { color: theme.text }]}>{partnerName}</Text>
                 <Text style={[styles.locationSnippet, { color: theme.textLight }]} numberOfLines={1}>
                   {partnerLocation?.address || 'Locating...'}
                 </Text>
@@ -266,7 +269,7 @@ export const PartnerInfoSheet = ({
                 </View>
                 <View style={styles.tripInfo}>
                   <Text style={[styles.tripTitle, { color: theme.text }]}>
-                    Heading to {partnerTrip.destination?.name || 'Destination'}
+                    Heading to {partnerTrip.destination?.name || partnerName || 'Destination'}
                   </Text>
                   <Text style={[styles.tripStatus, { color: theme.primary }]}>
                     Live tracking active • Safe 🏃‍♂️
@@ -339,10 +342,29 @@ export const PartnerInfoSheet = ({
 
               <TouchableOpacity 
                 style={[styles.actionCard, { backgroundColor: theme.surface }]}
-                onPress={onNavigate}
+                onPress={() => {
+                  if (partner?.phoneNumber) {
+                    Linking.openURL(`tel:${partner.phoneNumber}`);
+                  } else {
+                    alert('No Phone Number set for partner.');
+                  }
+                }}
               >
                 <View style={[styles.actionIconCircle, { backgroundColor: '#E0F2FE' }]}>
-                  <Navigation2 color="#0EA5E9" size={24} fill="#0EA5E9" />
+                  <Phone color="#0EA5E9" size={24} fill="#0EA5E9" />
+                </View>
+                <Text style={[styles.actionTitle, { color: theme.text }]}>Call</Text>
+                <Text style={[styles.actionDesc, { color: theme.textLight }]}>Voice Call</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.actionGrid}>
+              <TouchableOpacity 
+                style={[styles.actionCard, { backgroundColor: theme.surface }]}
+                onPress={onNavigate}
+              >
+                <View style={[styles.actionIconCircle, { backgroundColor: '#FEF3C7' }]}>
+                  <Navigation2 color="#D97706" size={24} fill="#D97706" />
                 </View>
                 <Text style={[styles.actionTitle, { color: theme.text }]}>Directions</Text>
                 <Text style={[styles.actionDesc, { color: theme.textLight }]}>Open Maps</Text>

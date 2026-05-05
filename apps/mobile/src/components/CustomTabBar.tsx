@@ -36,7 +36,8 @@ export const CustomTabBar = ({ state, descriptors, navigation }: BottomTabBarPro
           { 
             backgroundColor: theme.glass,
             borderColor: theme.glassBorder,
-            width: width * 0.88, // Dynamic width here
+            width: (width || Dimensions.get('window').width) * 0.88, // Added fallback width
+            minWidth: 300, // Safety minimum
           }
         ]}
       >

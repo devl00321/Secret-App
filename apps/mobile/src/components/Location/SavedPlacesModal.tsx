@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, TextInput, Alert } from 'react-native';
+import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, TextInput, Alert, Platform } from 'react-native';
 import {
   X,
   Plus,
@@ -95,8 +95,16 @@ export const SavedPlacesModal = ({ visible, onClose, onSelectOnMap, initialLocat
       animationType="slide"
       onRequestClose={onClose}
     >
-      <View style={styles.overlay}>
-        <View style={[styles.content, { backgroundColor: theme.surface }]}>
+      <TouchableOpacity 
+        style={styles.overlay} 
+        activeOpacity={1} 
+        onPress={onClose}
+      >
+        <TouchableOpacity 
+          activeOpacity={1} 
+          onPress={(e) => e.stopPropagation()}
+          style={[styles.content, { backgroundColor: theme.surface }]}
+        >
           <View style={styles.header}>
             <Text style={[styles.title, { color: theme.text }]}>Safe Places 📍</Text>
             <TouchableOpacity onPress={onClose}>
@@ -105,7 +113,11 @@ export const SavedPlacesModal = ({ visible, onClose, onSelectOnMap, initialLocat
           </View>
 
           {isAdding ? (
-            <View style={styles.addSection}>
+            <ScrollView 
+              style={styles.addSection} 
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ paddingBottom: 20 }}
+            >
               <Text style={[styles.sectionTitle, { color: theme.textLight }]}>ADD NEW PLACE</Text>
               <TextInput
                 style={[styles.input, {
@@ -148,28 +160,34 @@ export const SavedPlacesModal = ({ visible, onClose, onSelectOnMap, initialLocat
               </View>
 
               <View style={styles.buttonRow}>
-                <Button
-                  title="Back"
+                <TouchableOpacity
+                  style={[styles.backBtn, { borderColor: theme.border }]}
                   onPress={() => setIsAdding(false)}
-                  variant="outline"
-                  style={{ flex: 1, marginRight: 10 }}
-                />
-                <View style={{ flex: 1.5 }}>
-                  <Button
-                    title={initialLocation ? "Confirm Picked" : "Save Current"}
+                >
+                  <Text style={[styles.backBtnText, { color: theme.text }]}>Back</Text>
+                </TouchableOpacity>
+                <View style={styles.actionColumn}>
+                  <TouchableOpacity
+                    style={[styles.primaryActionBtn, { backgroundColor: theme.primary }]}
                     onPress={handleAddCurrent}
-                    style={{ marginBottom: 8 }}
-                  />
+                  >
+                    <Text style={styles.primaryActionText}>
+                      {initialLocation ? "Confirm Picked" : "Save Current"}
+                    </Text>
+                  </TouchableOpacity>
                   {!initialLocation && (
-                    <Button
-                      title="Pick on Map"
+                    <TouchableOpacity
+                      style={[styles.secondaryActionBtn, { borderColor: theme.primary }]}
                       onPress={onSelectOnMap}
-                      variant="outline"
-                    />
+                    >
+                      <Text style={[styles.secondaryActionText, { color: theme.primary }]}>
+                        Pick on Map
+                      </Text>
+                    </TouchableOpacity>
                   )}
                 </View>
               </View>
-            </View>
+            </ScrollView>
           ) : (
             <>
               <ScrollView style={styles.list} showsVerticalScrollIndicator={false}>
@@ -219,8 +237,8 @@ export const SavedPlacesModal = ({ visible, onClose, onSelectOnMap, initialLocat
               />
             </>
           )}
-        </View>
-      </View>
+        </TouchableOpacity>
+      </TouchableOpacity>
     </Modal>
   );
 };
@@ -336,8 +354,45 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     marginTop: 'auto',
     paddingTop: 20,
-    alignItems: 'stretch',
-    minHeight: 75,
+    gap: 12,
+  },
+  backBtn: {
+    flex: 1,
+    height: 108,
+    borderRadius: 20,
+    borderWidth: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  backBtnText: {
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  actionColumn: {
+    flex: 1.5,
+    gap: 8,
+  },
+  primaryActionBtn: {
+    height: 50,
+    borderRadius: 25,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  primaryActionText: {
+    color: 'white',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  secondaryActionBtn: {
+    height: 50,
+    borderRadius: 25,
+    borderWidth: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  secondaryActionText: {
+    fontSize: 15,
+    fontWeight: '800',
   },
   addButton: {
     marginTop: 10,

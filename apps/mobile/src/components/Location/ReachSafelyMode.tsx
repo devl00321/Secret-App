@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Modal, ScrollView, TouchableWithoutFeedback, Dimensions } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Modal, ScrollView, TouchableWithoutFeedback, Dimensions, Alert } from 'react-native';
 import { 
   Shield, 
   MapPin, 
@@ -13,7 +13,10 @@ import {
   GraduationCap,
   Building2,
   Dumbbell,
-  BookOpen
+  BookOpen,
+  Clock,
+  AlertTriangle,
+  Timer
 } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../../theme';
@@ -34,48 +37,322 @@ const PLACE_ICONS: Record<string, any> = {
   other: MapPin,
 };
 
-export const ReachSafelyMode = () => {
+const ITEM_HEIGHT = 44; // Height of each wheel item for snap calculation
+
+interface ReachSafelyModeProps {
+  visible?: boolean;
+  onClose?: () => void;
+}
+
+type Phase = 'destination' | 'timer';
+
+export const ReachSafelyMode = ({ visible, onClose }: ReachSafelyModeProps) => {
   const theme = useTheme();
-  const { isTripActive, setTripActive, distanceToPartner, savedPlaces, destination, userLocation } = useLocationStore();
+  const { walkSafe, savedPlaces, userLocation } = useLocationStore();
   const [showSelector, setShowSelector] = useState(false);
+  const [phase, setPhase] = useState<Phase>('destination');
+  const [selectedPlace, setSelectedPlace] = useState<SavedPlace | null>(null);
+  const [selectedHours, setSelectedHours] = useState(0);
+  const [selectedMinutes, setSelectedMinutes] = useState(30);
+  
+  // Live countdown state
+  const [timeLeft, setTimeLeft] = useState('');
+  const [distanceLeft, setDistanceLeft] = useState('');
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const calculateDistanceToDest = () => {
-    if (!userLocation || !destination) return null;
-    
-    const lat1 = userLocation.coords.latitude;
-    const lon1 = userLocation.coords.longitude;
-    const lat2 = destination.latitude;
-    const lon2 = destination.longitude;
+  const isSelectionMode = visible !== undefined;
 
-    const R = 6371; // Radius of the earth in km
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-      Math.sin(dLon / 2) * Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
+  useEffect(() => {
+    if (visible) {
+      setShowSelector(true);
+      setPhase('destination');
+      setSelectedPlace(null);
+    }
+  }, [visible]);
+
+  // Live countdown when walk safe is active
+  useEffect(() => {
+    if (walkSafe?.isActive && walkSafe.deadline) {
+      timerRef.current = setInterval(() => {
+        const now = Date.now();
+        const remaining = (walkSafe.deadline || 0) - now;
+        
+        if (remaining <= 0) {
+          setTimeLeft('OVERDUE');
+        } else {
+          const min = Math.floor(remaining / 60000);
+          const sec = Math.floor((remaining % 60000) / 1000);
+          setTimeLeft(`${min}:${sec.toString().padStart(2, '0')}`);
+        }
+
+        // Distance
+        if (walkSafe.lastCheckDistance !== null) {
+          const d = walkSafe.lastCheckDistance;
+          setDistanceLeft(d < 1000 ? `${Math.round(d)} m` : `${(d / 1000).toFixed(1)} km`);
+        }
+      }, 1000);
+    }
+
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [walkSafe?.isActive, walkSafe?.deadline, walkSafe?.lastCheckDistance]);
+
+  const handleClose = () => {
+    setShowSelector(false);
+    setPhase('destination');
+    setSelectedPlace(null);
+    if (onClose) onClose();
   };
 
-  const distToDest = calculateDistanceToDest();
+  const handleSelectPlace = (place: SavedPlace) => {
+    setSelectedPlace(place);
+    setPhase('timer');
+  };
 
-  const startTrip = (place: SavedPlace) => {
-    setTripActive(true, {
-      latitude: place.latitude,
-      longitude: place.longitude,
-      name: place.name
-    });
-    setShowSelector(false);
+  const handleStartWalkSafe = () => {
+    if (!selectedPlace) return;
+    const totalMinutes = selectedHours * 60 + selectedMinutes;
+    if (totalMinutes <= 0) return;
+    useLocationStore.getState().startWalkSafe(selectedPlace, totalMinutes);
+    locationService.startWalkSafeMonitor();
+    locationService.syncWalkSafe();
+    locationService.syncTripStatus();
+    handleClose();
+  };
+
+  const handleCancelWalkSafe = () => {
+    Alert.alert(
+      'Cancel Walk Safe?',
+      'Your partner will be notified that you cancelled the trip.',
+      [
+        { text: 'Keep Going', style: 'cancel' },
+        {
+          text: 'Cancel Trip',
+          style: 'destructive',
+          onPress: () => {
+            locationService.stopWalkSafeMonitor();
+            useLocationStore.getState().endWalkSafe('cancelled');
+            locationService.syncWalkSafe();
+            locationService.syncTripStatus();
+          },
+        },
+      ]
+    );
+  };
+
+  const handleReachedSafely = () => {
+    locationService.stopWalkSafeMonitor();
+    useLocationStore.getState().endWalkSafe('arrived');
+    locationService.syncWalkSafe();
     locationService.syncTripStatus();
   };
 
-  if (isTripActive) {
+  const getStatusColor = () => {
+    switch (walkSafe?.status) {
+      case 'traveling': return '#00C853';
+      case 'warning': return '#FFA000';
+      case 'overdue': return '#FF3B30';
+      case 'arrived': return '#00C853';
+      default: return theme.primary;
+    }
+  };
+
+  const getStatusLabel = () => {
+    switch (walkSafe?.status) {
+      case 'traveling': return '🟢 En Route';
+      case 'warning': return '🟡 Running Late';
+      case 'overdue': return '🔴 Overdue';
+      case 'arrived': return '✅ Arrived!';
+      default: return 'Safe';
+    }
+  };
+
+  // ─── SELECTION MODAL ──────────────────────────────────────────────
+  if (isSelectionMode) {
+    return (
+      <Modal
+        visible={showSelector}
+        transparent
+        animationType="fade"
+        onRequestClose={handleClose}
+      >
+        <View style={styles.modalOverlay}>
+          <TouchableWithoutFeedback onPress={handleClose}>
+            <View style={StyleSheet.absoluteFillObject} />
+          </TouchableWithoutFeedback>
+          <View style={[styles.content, { backgroundColor: theme.surface }]}>
+            {phase === 'destination' ? (
+              <>
+                <View style={styles.modalHeader}>
+                  <Text style={[styles.modalTitle, { color: theme.text }]}>Where are you going? 📍</Text>
+                  <TouchableOpacity onPress={handleClose}>
+                    <X size={24} color={theme.textLight} />
+                  </TouchableOpacity>
+                </View>
+
+                <ScrollView style={styles.selectorList} showsVerticalScrollIndicator={false}>
+                  {savedPlaces.length === 0 ? (
+                    <View style={styles.emptyState}>
+                      <MapPin size={40} color={theme.textLight} style={{ opacity: 0.3, marginBottom: 10 }} />
+                      <Text style={[styles.emptyText, { color: theme.textLight }]}>No saved places yet.</Text>
+                      <Text style={[styles.emptySubText, { color: theme.textLight }]}>
+                        Add your Home, Work or Tuition in Settings first!
+                      </Text>
+                    </View>
+                  ) : (
+                    savedPlaces.map((place: SavedPlace) => {
+                      const Icon = PLACE_ICONS[place.type] || MapPin;
+                      return (
+                        <TouchableOpacity
+                          key={place.id}
+                          style={[styles.placeOption, { backgroundColor: theme.isDark ? '#222' : '#F8F8F8' }]}
+                          onPress={() => handleSelectPlace(place)}
+                        >
+                          <View style={[styles.placeIconCircle, { backgroundColor: theme.primary + '15' }]}>
+                            <Icon size={20} color={theme.primary} />
+                          </View>
+                          <Text style={[styles.placeOptionName, { color: theme.text }]}>{place.name}</Text>
+                          <ChevronRight size={18} color={theme.textLight} />
+                        </TouchableOpacity>
+                      );
+                    })
+                  )}
+                </ScrollView>
+
+                {savedPlaces.length > 0 && (
+                  <Text style={[styles.modalNote, { color: theme.textLight }]}>
+                    Select your destination to start Walk Safe monitoring.
+                  </Text>
+                )}
+              </>
+            ) : (
+              /* ─── TIMER PHASE (iOS-style wheel) ──────────────── */
+              <>
+                <View style={styles.modalHeader}>
+                  <TouchableOpacity onPress={() => setPhase('destination')}>
+                    <Text style={[styles.backLink, { color: theme.primary }]}>← Back</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={handleClose}>
+                    <X size={24} color={theme.textLight} />
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.timerHeader}>
+                  <View style={[styles.timerIconBox, { backgroundColor: theme.primary + '15' }]}>
+                    <Timer size={28} color={theme.primary} />
+                  </View>
+                  <Text style={[styles.timerTitle, { color: theme.text }]}>
+                    How long to reach{'\n'}
+                    <Text style={{ color: theme.primary }}>{selectedPlace?.name}</Text>?
+                  </Text>
+                </View>
+
+                {/* iOS-style Scroll Wheel */}
+                <View style={styles.wheelContainer}>
+                  {/* Hours wheel */}
+                  <View style={styles.wheelColumn}>
+                    <Text style={[styles.wheelLabel, { color: theme.textLight }]}>hours</Text>
+                    <View style={styles.wheelWrapper}>
+                      <View style={[styles.wheelHighlight, { borderColor: theme.primary + '40', backgroundColor: theme.primary + '08' }]} />
+                      <ScrollView
+                        style={styles.wheel}
+                        contentContainerStyle={{ paddingVertical: ITEM_HEIGHT * 2 }}
+                        showsVerticalScrollIndicator={false}
+                        snapToInterval={ITEM_HEIGHT}
+                        decelerationRate="fast"
+                        onMomentumScrollEnd={(e) => {
+                          const idx = Math.round(e.nativeEvent.contentOffset.y / ITEM_HEIGHT);
+                          setSelectedHours(Math.max(0, Math.min(idx, 24))); // Limit to 24 hours
+                        }}
+                      >
+                        {Array.from({ length: 25 }).map((_, h) => (
+                          <View key={h} style={styles.wheelItem}>
+                            <Text style={[
+                              styles.wheelItemText,
+                              { color: selectedHours === h ? theme.text : theme.textLight + '60' },
+                              selectedHours === h && styles.wheelItemActive,
+                            ]}>
+                              {h}
+                            </Text>
+                          </View>
+                        ))}
+                      </ScrollView>
+                    </View>
+                  </View>
+
+                  {/* Separator */}
+                  <Text style={[styles.wheelSeparator, { color: theme.text }]}>:</Text>
+
+                  {/* Minutes wheel */}
+                  <View style={styles.wheelColumn}>
+                    <Text style={[styles.wheelLabel, { color: theme.textLight }]}>min</Text>
+                    <View style={styles.wheelWrapper}>
+                      <View style={[styles.wheelHighlight, { borderColor: theme.primary + '40', backgroundColor: theme.primary + '08' }]} />
+                      <ScrollView
+                        style={styles.wheel}
+                        contentContainerStyle={{ paddingVertical: ITEM_HEIGHT * 2 }}
+                        showsVerticalScrollIndicator={false}
+                        snapToInterval={ITEM_HEIGHT}
+                        decelerationRate="fast"
+                        onMomentumScrollEnd={(e) => {
+                          const idx = Math.round(e.nativeEvent.contentOffset.y / ITEM_HEIGHT);
+                          const minutes = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55];
+                          setSelectedMinutes(minutes[Math.max(0, Math.min(idx, minutes.length - 1))]);
+                        }}
+                      >
+                        {[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55].map((m) => (
+                          <View key={m} style={styles.wheelItem}>
+                            <Text style={[
+                              styles.wheelItemText,
+                              { color: selectedMinutes === m ? theme.text : theme.textLight + '60' },
+                              selectedMinutes === m && styles.wheelItemActive,
+                            ]}>
+                              {m.toString().padStart(2, '0')}
+                            </Text>
+                          </View>
+                        ))}
+                      </ScrollView>
+                    </View>
+                  </View>
+                </View>
+
+                <Text style={[styles.timerDisplay, { color: theme.text }]}>
+                  {selectedHours > 0 ? `${selectedHours} hr ` : ''}{selectedMinutes} min
+                </Text>
+
+                <TouchableOpacity
+                  style={[
+                    styles.startBtn, 
+                    { backgroundColor: (selectedHours > 0 || selectedMinutes > 0) ? theme.primary : theme.border }
+                  ]}
+                  onPress={handleStartWalkSafe}
+                  disabled={selectedHours === 0 && selectedMinutes === 0}
+                >
+                  <Shield size={20} color="white" />
+                  <Text style={styles.startBtnText}>Start Walk Safe</Text>
+                </TouchableOpacity>
+
+                <Text style={[styles.timerNote, { color: theme.textLight }]}>
+                  If you don't reach in time, we'll ask if you're safe.{'\n'}No response in 2 min = auto SOS.
+                </Text>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
+    );
+  }
+
+  // ─── ACTIVE DASHBOARD (rendered on Location screen) ──────────────
+  if (walkSafe?.isActive) {
+    const statusColor = getStatusColor();
+
     return (
       <View style={[styles.activeContainer, { backgroundColor: theme.surface }]}>
         <View style={styles.header}>
           <LinearGradient 
-            colors={[theme.primary, theme.primary + 'AA']} 
+            colors={[statusColor, statusColor + 'AA']} 
             style={styles.pulse}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
@@ -84,140 +361,64 @@ export const ReachSafelyMode = () => {
           </LinearGradient>
           <View style={styles.headerText}>
             <Text style={[styles.status, { color: theme.text }]} numberOfLines={1}>
-              Heading to {destination?.name || 'Destination'} 🏃‍♂️
+              Heading to {walkSafe.destination?.name || 'Destination'} 🏃‍♂️
             </Text>
             <Text style={[styles.eta, { color: theme.textLight }]} numberOfLines={1}>
-              Live tracking active • Partner notified 💙
+              Walk Safe active • Partner notified 💙
             </Text>
           </View>
         </View>
 
         <View style={[styles.metrics, { backgroundColor: theme.isDark ? '#222' : '#F8F9FF' }]}>
           <View style={styles.metric}>
-            <Text style={[styles.metricValue, { color: theme.primary }]}>
-              {distToDest ? `${distToDest.toFixed(1)} km` : '--'}
+            <Text style={[styles.metricValue, { color: statusColor }]}>
+              {timeLeft || '--:--'}
             </Text>
-            <Text style={[styles.metricLabel, { color: theme.textLight }]}>REMAINING</Text>
+            <Text style={[styles.metricLabel, { color: theme.textLight }]}>TIME LEFT</Text>
           </View>
           <View style={[styles.divider, { backgroundColor: theme.border }]} />
           <View style={styles.metric}>
-            <Text style={[styles.metricValue, { color: '#00C853' }]}>
-              Safe
+            <Text style={[styles.metricValue, { color: theme.primary }]}>
+              {distanceLeft || '--'}
+            </Text>
+            <Text style={[styles.metricLabel, { color: theme.textLight }]}>DISTANCE</Text>
+          </View>
+          <View style={[styles.divider, { backgroundColor: theme.border }]} />
+          <View style={styles.metric}>
+            <Text style={[styles.metricValue, { color: statusColor }]}>
+              {getStatusLabel()}
             </Text>
             <Text style={[styles.metricLabel, { color: theme.textLight }]}>STATUS</Text>
           </View>
         </View>
 
-        <TouchableOpacity 
-          style={[styles.reachedButton, { backgroundColor: theme.primary }]}
-          onPress={() => {
-            setTripActive(false);
-            locationService.syncTripStatus();
-          }}
-          activeOpacity={0.8}
-        >
-          <CheckCircle2 size={18} color="white" />
-          <Text style={styles.reachedButtonText}>I've Reached Safely</Text>
-        </TouchableOpacity>
+        <View style={styles.dashActions}>
+          <TouchableOpacity 
+            style={[styles.reachedButton, { backgroundColor: theme.primary }]}
+            onPress={handleReachedSafely}
+            activeOpacity={0.8}
+          >
+            <CheckCircle2 size={18} color="white" />
+            <Text style={styles.reachedButtonText}>I've Reached Safely</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={[styles.cancelTripBtn, { borderColor: theme.border }]}
+            onPress={handleCancelWalkSafe}
+            activeOpacity={0.8}
+          >
+            <X size={16} color={theme.textLight} />
+            <Text style={[styles.cancelTripText, { color: theme.textLight }]}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     );
   }
 
-  return (
-    <>
-      <TouchableOpacity 
-        style={[styles.fab, { backgroundColor: theme.surface }]}
-        onPress={() => setShowSelector(true)}
-        activeOpacity={0.8}
-      >
-        <Shield size={24} color={theme.primary} fill={theme.primary + '20'} />
-      </TouchableOpacity>
-
-      <Modal
-        visible={showSelector}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowSelector(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <TouchableWithoutFeedback onPress={() => setShowSelector(false)}>
-            <View style={StyleSheet.absoluteFillObject} />
-          </TouchableWithoutFeedback>
-          <View style={[styles.content, { backgroundColor: theme.surface }]}>
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: theme.text }]}>Where are you going? 📍</Text>
-              <TouchableOpacity onPress={() => setShowSelector(false)}>
-                <X size={24} color={theme.textLight} />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView style={styles.selectorList}>
-              {savedPlaces.length === 0 ? (
-                <View style={styles.emptyState}>
-                  <MapPin size={40} color={theme.textLight} style={{ opacity: 0.3, marginBottom: 10 }} />
-                  <Text style={[styles.emptyText, { color: theme.textLight }]}>No saved places yet.</Text>
-                  <Text style={[styles.emptySubText, { color: theme.textLight }]}>
-                    Add your Home, Work or Tuition in Settings first!
-                  </Text>
-                </View>
-              ) : (
-                savedPlaces.map((place: SavedPlace) => {
-                  const Icon = PLACE_ICONS[place.type] || MapPin;
-                  return (
-                    <TouchableOpacity
-                      key={place.id}
-                      style={[styles.placeOption, { backgroundColor: theme.isDark ? '#222' : '#F8F8F8' }]}
-                      onPress={() => startTrip(place)}
-                    >
-                      <View style={[styles.placeIconCircle, { backgroundColor: theme.primary + '15' }]}>
-                        <Icon size={20} color={theme.primary} />
-                      </View>
-                      <Text style={[styles.placeOptionName, { color: theme.text }]}>{place.name}</Text>
-                      <ChevronRight size={18} color={theme.textLight} />
-                    </TouchableOpacity>
-                  );
-                })
-              )}
-            </ScrollView>
-
-            {savedPlaces.length > 0 && (
-              <Text style={[styles.modalNote, { color: theme.textLight }]}>
-                We'll notify your partner automatically when you arrive.
-              </Text>
-            )}
-          </View>
-        </View>
-      </Modal>
-    </>
-  );
+  return null;
 };
 
 const styles = StyleSheet.create({
-  container: {
-    padding: 16,
-    borderRadius: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 15 },
-    shadowOpacity: 0.08,
-    shadowRadius: 30,
-    elevation: 10,
-    marginHorizontal: 20,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.05)',
-  },
-  fab: {
-    width: 45,
-    height: 45,
-    borderRadius: 22.5,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    elevation: 5,
-  },
   activeContainer: {
     padding: 20,
     borderRadius: 28,
@@ -226,50 +427,11 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.08,
     shadowRadius: 30,
     elevation: 12,
-    marginHorizontal: 20,
-    marginBottom: 66,
-    borderWidth: 1,
+    width: SCREEN_WIDTH * 0.88,
+    alignSelf: 'center',
+    marginBottom: 0,
+    borderWidth: 1.5,
     borderColor: 'rgba(0,0,0,0.05)',
-  },
-  info: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    width: '100%',
-  },
-  iconCircle: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  textContainer: {
-    marginLeft: 12,
-    flex: 1,
-  },
-  title: {
-    fontSize: 15,
-    fontWeight: '800',
-    letterSpacing: -0.3,
-  },
-  desc: {
-    fontSize: 12,
-    marginTop: 2,
-    opacity: 0.7,
-  },
-  miniStartButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 18,
-  },
-  miniStartButtonText: {
-    color: 'white',
-    fontSize: 12,
-    fontWeight: 'bold',
-    marginRight: 2,
   },
   header: {
     flexDirection: 'row',
@@ -285,6 +447,7 @@ const styles = StyleSheet.create({
   },
   headerText: {
     marginLeft: 12,
+    flex: 1,
   },
   status: {
     fontSize: 15,
@@ -305,9 +468,10 @@ const styles = StyleSheet.create({
   },
   metric: {
     alignItems: 'center',
+    flex: 1,
   },
   metricValue: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '900',
   },
   metricLabel: {
@@ -322,7 +486,12 @@ const styles = StyleSheet.create({
     height: 24,
     opacity: 0.2,
   },
+  dashActions: {
+    flexDirection: 'row',
+    gap: 10,
+  },
   reachedButton: {
+    flex: 1,
     height: 48,
     borderRadius: 24,
     flexDirection: 'row',
@@ -335,6 +504,20 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     marginLeft: 8,
   },
+  cancelTripBtn: {
+    height: 48,
+    paddingHorizontal: 16,
+    borderRadius: 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+  },
+  cancelTripText: {
+    fontSize: 13,
+    fontWeight: '700',
+    marginLeft: 5,
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
@@ -345,7 +528,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 30,
     padding: 25,
     paddingBottom: 40,
-    maxHeight: '70%',
+    maxHeight: '75%',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -15 },
     shadowOpacity: 0.08,
@@ -361,6 +544,10 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 18,
     fontWeight: 'bold',
+  },
+  backLink: {
+    fontSize: 16,
+    fontWeight: '700',
   },
   selectorList: {
     marginBottom: 15,
@@ -403,5 +590,112 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     opacity: 0.6,
     fontStyle: 'italic',
-  }
+  },
+  // Timer phase
+  timerHeader: {
+    alignItems: 'center',
+    marginBottom: 25,
+  },
+  timerIconBox: {
+    width: 60,
+    height: 60,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 15,
+  },
+  timerTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    textAlign: 'center',
+    lineHeight: 26,
+  },
+  // iOS Scroll Wheel
+  wheelContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+    height: ITEM_HEIGHT * 5,
+  },
+  wheelColumn: {
+    alignItems: 'center',
+    width: 100,
+  },
+  wheelLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    marginBottom: 8,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
+  wheelWrapper: {
+    height: ITEM_HEIGHT * 5,
+    overflow: 'hidden',
+    position: 'relative' as const,
+  },
+  wheel: {
+    height: ITEM_HEIGHT * 5,
+  },
+  wheelHighlight: {
+    position: 'absolute' as const,
+    top: ITEM_HEIGHT * 2,
+    left: 0,
+    right: 0,
+    height: ITEM_HEIGHT,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderRadius: 10,
+    zIndex: -1,
+  },
+  wheelItem: {
+    height: ITEM_HEIGHT,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+  },
+  wheelItemText: {
+    fontSize: 22,
+    fontWeight: '500',
+  },
+  wheelItemActive: {
+    fontWeight: '800' as const,
+    fontSize: 26,
+  },
+  wheelSeparator: {
+    fontSize: 28,
+    fontWeight: '800',
+    marginHorizontal: 10,
+    marginTop: 20,
+  },
+  timerDisplay: {
+    fontSize: 16,
+    fontWeight: '700',
+    textAlign: 'center' as const,
+    marginBottom: 20,
+    opacity: 0.6,
+  },
+  startBtn: {
+    height: 56,
+    borderRadius: 28,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 15,
+    elevation: 8,
+  },
+  startBtnText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '900',
+    marginLeft: 10,
+  },
+  timerNote: {
+    fontSize: 12,
+    textAlign: 'center' as const,
+    marginTop: 15,
+    lineHeight: 18,
+    opacity: 0.6,
+  },
 });

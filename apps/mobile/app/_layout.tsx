@@ -19,6 +19,7 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useAuthStore } from '../src/store/useAuthStore';
 import { auth, db } from '../src/services/firebase';
 import { userService } from '../src/services/userService';
+import { locationService } from '../src/services/locationService';
 
 // Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync().catch(() => {
@@ -100,7 +101,37 @@ export default function RootLayout() {
     };
   }, [setCoupleId, setLoading, setPartner, setUser]);
 
-  // 1.1 Couple Data Listener
+  // 1.1 Global Emergency & Location Listeners
+  useEffect(() => {
+    if (!coupleId || !user) return;
+
+    // Use a small delay to ensure everything is initialized
+    const timer = setTimeout(() => {
+      console.log('[RootLayout] Initializing Safety Listeners...');
+    }, 500);
+
+    const sosUnsubscribe = locationService.subscribeToCoupleSos(coupleId);
+    const pingUnsubscribe = locationService.subscribeToIncomingPings(coupleId, (ping) => {
+      // Global ping handling could go here (haptics are handled inside the service usually, 
+      // but let's keep it simple for now as LocationScreen also handles visual anim)
+    });
+
+    let partnerUnsubscribe = () => {};
+    if (currentUserProfile?.partnerId) {
+      partnerUnsubscribe = locationService.subscribeToPartner(currentUserProfile.partnerId);
+    }
+
+    return () => {
+      clearTimeout(timer);
+      sosUnsubscribe();
+      pingUnsubscribe();
+      partnerUnsubscribe();
+      // Ensure siren stops if app is totally unmounted (rare)
+      import('../src/services/alertService').then(({ alertService }) => alertService.stopSiren());
+    };
+  }, [coupleId, user?.uid, currentUserProfile?.partnerId]);
+
+  // 1.2 Couple Data Listener (for anniversary etc)
   useEffect(() => {
     if (!coupleId) return;
 

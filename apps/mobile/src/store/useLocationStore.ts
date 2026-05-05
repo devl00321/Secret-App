@@ -12,6 +12,18 @@ export interface SavedPlace {
   radius: number; // in meters
 }
 
+export type WalkSafeStatus = 'traveling' | 'warning' | 'overdue' | 'arrived' | 'cancelled';
+
+export interface WalkSafeState {
+  isActive: boolean;
+  destination: SavedPlace | null;
+  startTime: number | null;
+  deadline: number | null;
+  durationMinutes: number;
+  status: WalkSafeStatus;
+  lastCheckDistance: number | null; // meters
+}
+
 interface LocationState {
   userLocation: Location.LocationObject | null;
   partnerLocation: {
@@ -35,6 +47,21 @@ interface LocationState {
     isActive: boolean;
     destination: { latitude: number; longitude: number; name?: string } | null;
   } | null;
+  partnerWalkSafe: {
+    isActive: boolean;
+    destinationName: string | null;
+    deadline: number | null;
+    status: WalkSafeStatus;
+    lastCheckDistance: number | null;
+  } | null;
+  activeSos: {
+    isActive: boolean;
+    triggeredBy: string | null;
+    startTime: number | null;
+    location: { latitude: number; longitude: number } | null;
+  } | null;
+  isSirenMuted: boolean;
+  walkSafe: WalkSafeState | null;
 
   // Actions
   setUserLocation: (location: Location.LocationObject | null) => void;
@@ -48,6 +75,13 @@ interface LocationState {
   updateSavedPlace: (id: string, place: Partial<SavedPlace>) => void;
   setPartnerSavedPlaces: (places: SavedPlace[]) => void;
   setPartnerTrip: (trip: { isActive: boolean; destination: any } | null) => void;
+  setPartnerWalkSafe: (walkSafe: any) => void;
+  setActiveSos: (sos: LocationState['activeSos']) => void;
+  setSirenMuted: (muted: boolean) => void;
+  startWalkSafe: (destination: SavedPlace, durationMinutes: number) => void;
+  updateWalkSafe: (update: Partial<WalkSafeState>) => void;
+  endWalkSafe: (status: 'arrived' | 'cancelled') => void;
+  extendWalkSafe: (extraMinutes: number) => void;
 }
 
 export const useLocationStore = create<LocationState>()(
@@ -64,6 +98,10 @@ export const useLocationStore = create<LocationState>()(
       savedPlaces: [],
       partnerSavedPlaces: [],
       partnerTrip: null,
+      partnerWalkSafe: null,
+      activeSos: null,
+      isSirenMuted: false,
+      walkSafe: null,
 
       setUserLocation: (userLocation) => set({ userLocation }),
       setPartnerLocation: (partnerLocation) => set({ partnerLocation }),
@@ -74,18 +112,72 @@ export const useLocationStore = create<LocationState>()(
       
       setPartnerSavedPlaces: (partnerSavedPlaces) => set({ partnerSavedPlaces }),
       setPartnerTrip: (partnerTrip) => set({ partnerTrip }),
+      setPartnerWalkSafe: (partnerWalkSafe) => set({ partnerWalkSafe }),
+      setActiveSos: (activeSos) => set({ activeSos }),
+      setSirenMuted: (isSirenMuted) => set({ isSirenMuted }),
 
-      addSavedPlace: (place) => set((state) => ({
-        savedPlaces: [...state.savedPlaces, { ...place, id: Math.random().toString(36).substring(7) }]
+      startWalkSafe: (destination, durationMinutes) => {
+        const now = Date.now();
+        set({
+          walkSafe: {
+            isActive: true,
+            destination,
+            startTime: now,
+            deadline: now + durationMinutes * 60 * 1000,
+            durationMinutes,
+            status: 'traveling',
+            lastCheckDistance: null,
+          },
+          // Also activate the generic trip for the map dashboard
+          isTripActive: true,
+          destination: {
+            latitude: destination.latitude,
+            longitude: destination.longitude,
+            name: destination.name,
+          },
+        });
+      },
+
+      updateWalkSafe: (update) => set((state) => ({
+        walkSafe: state.walkSafe ? { ...state.walkSafe, ...update } : null,
       })),
+
+      endWalkSafe: (status) => set({
+        walkSafe: null,
+        isTripActive: false,
+        destination: null,
+      }),
+
+      extendWalkSafe: (extraMinutes) => set((state) => ({
+        walkSafe: state.walkSafe ? {
+          ...state.walkSafe,
+          deadline: (state.walkSafe.deadline || Date.now()) + extraMinutes * 60 * 1000,
+          status: 'traveling' as const,
+        } : null,
+      })),
+
+      addSavedPlace: (place) => {
+        const newPlace = { ...place, id: Math.random().toString(36).substring(7) };
+        set((state) => ({
+          savedPlaces: [...state.savedPlaces, newPlace]
+        }));
+        // Import and call sync service
+        import('../services/locationService').then(m => m.locationService.syncSavedPlaces());
+      },
       
-      removeSavedPlace: (id) => set((state) => ({
-        savedPlaces: state.savedPlaces.filter(p => p.id !== id)
-      })),
+      removeSavedPlace: (id) => {
+        set((state) => ({
+          savedPlaces: state.savedPlaces.filter(p => p.id !== id)
+        }));
+        import('../services/locationService').then(m => m.locationService.syncSavedPlaces());
+      },
       
-      updateSavedPlace: (id, place) => set((state) => ({
-        savedPlaces: state.savedPlaces.map(p => p.id === id ? { ...p, ...place } : p)
-      })),
+      updateSavedPlace: (id, place) => {
+        set((state) => ({
+          savedPlaces: state.savedPlaces.map(p => p.id === id ? { ...p, ...place } : p)
+        }));
+        import('../services/locationService').then(m => m.locationService.syncSavedPlaces());
+      },
     }),
     {
       name: 'location-storage',
@@ -93,7 +185,8 @@ export const useLocationStore = create<LocationState>()(
       partialize: (state) => ({ 
         savedPlaces: state.savedPlaces,
         sharingDuration: state.sharingDuration,
-        isSharing: state.isSharing
+        isSharing: state.isSharing,
+        walkSafe: state.walkSafe, // Persist so it survives app restart
       }),
     }
   )

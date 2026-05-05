@@ -18,6 +18,18 @@ export interface PartnerProfile {
   profileSetupComplete?: boolean;
   partnerNickname?: string;
   anniversaryDate?: string; // DD/MM/YYYY
+  emergencyContact?: {
+    name: string;
+    phone: string;
+    updatedAt: string;
+  };
+  emergencyContacts?: {
+    id: string;
+    name: string;
+    phone: string;
+    priority: number;
+    updatedAt: string;
+  }[];
 }
 
 export const userService = {

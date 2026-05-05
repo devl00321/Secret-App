@@ -9,21 +9,28 @@ interface HeaderProps {
   title: string;
   showBack?: boolean;
   rightElement?: React.ReactNode;
+  transparent?: boolean;
+  textColor?: string;
 }
 
-export const Header = ({ title, showBack = false, rightElement }: HeaderProps) => {
+export const Header = ({ title, showBack = false, rightElement, transparent = false, textColor }: HeaderProps) => {
   const router = useRouter();
   const theme = useTheme();
 
+  const Container = transparent ? View : BlurView;
+
   return (
-    <BlurView 
-      intensity={Platform.OS === 'ios' ? 80 : 0} 
-      tint={theme.isDark ? 'dark' : 'light'}
+    <Container 
+      {...(!transparent ? {
+        intensity: Platform.OS === 'ios' ? 80 : 0,
+        tint: theme.isDark ? 'dark' : 'light'
+      } : {})}
       style={[
         styles.container, 
         { 
-          backgroundColor: Platform.OS === 'ios' ? 'transparent' : theme.surface,
-          borderBottomColor: theme.border 
+          backgroundColor: transparent ? 'transparent' : (Platform.OS === 'ios' ? 'transparent' : theme.surface),
+          borderBottomColor: transparent ? 'transparent' : theme.border,
+          borderBottomWidth: transparent ? 0 : 1,
         }
       ]}
     >
@@ -33,13 +40,13 @@ export const Header = ({ title, showBack = false, rightElement }: HeaderProps) =
             style={styles.backButton} 
             onPress={() => router.back()}
           >
-            <ArrowLeft size={24} color={theme.text} />
+            <ArrowLeft size={24} color={textColor ?? theme.text} />
           </TouchableOpacity>
         )}
-        <Text style={[styles.title, { color: theme.text }]}>{title}</Text>
+        <Text style={[styles.title, { color: textColor ?? theme.text }]}>{title}</Text>
         <View style={styles.rightSlot}>{rightElement ?? (showBack ? <View style={styles.placeholder} /> : null)}</View>
       </View>
-    </BlurView>
+    </Container>
   );
 };
 
@@ -47,7 +54,6 @@ const styles = StyleSheet.create({
   container: {
     paddingTop: Platform.OS === 'ios' ? 10 : 10,
     paddingBottom: 15,
-    borderBottomWidth: 1,
     zIndex: 10,
   },
   content: {

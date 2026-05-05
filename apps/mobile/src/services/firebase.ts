@@ -3,6 +3,7 @@ import { initializeApp } from 'firebase/app';
 // @ts-expect-error: getReactNativePersistence is available in the React Native SDK but not in the web types
 import { getAuth, initializeAuth, getReactNativePersistence } from 'firebase/auth';
 import { getFirestore, initializeFirestore } from 'firebase/firestore';
+import { getStorage } from 'firebase/storage';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const firebaseConfig = {
@@ -44,3 +45,4 @@ const getSafeDb = () => {
 };
 
 export const db = getSafeDb();
+export const storage = getStorage(app);
