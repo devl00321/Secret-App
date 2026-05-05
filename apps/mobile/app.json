@@ -83,6 +83,12 @@
           "icon": "./assets/images/notification-icon.png",
           "color": "#FF6B6B"
         }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Allow Love App to use FaceID for secure map access."
+        }
       ]
     ],
     "experiments": {

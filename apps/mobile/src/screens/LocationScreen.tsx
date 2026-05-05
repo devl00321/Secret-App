@@ -3,7 +3,19 @@ import { StyleSheet, View, Text, TouchableOpacity, Animated, Platform, Linking, 
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
 import { Header } from '../components/Header';
-import { Settings, Navigation2, MapPin, Heart, Battery, Info, Search, Loader2 } from 'lucide-react-native';
+import { 
+  Navigation2, 
+  Settings, 
+  MapPin, 
+  Heart, 
+  Search, 
+  ChevronRight,
+  Shield,
+  Clock,
+  Battery, 
+  Info, 
+  Loader2 
+} from 'lucide-react-native';
 import { useTheme } from '../theme';
 import { useLocationStore } from '../store/useLocationStore';
 import { locationService } from '../services/locationService';
@@ -967,5 +979,43 @@ const styles = StyleSheet.create({
   suggestionText: {
     marginLeft: 10,
     fontSize: 14,
+  },
+  lockCircle: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  lockTitle: {
+    fontSize: 24,
+    fontWeight: '900',
+    marginBottom: 12,
+  },
+  lockDesc: {
+    fontSize: 16,
+    textAlign: 'center',
+    paddingHorizontal: 40,
+    marginBottom: 32,
+    lineHeight: 22,
+  },
+  unlockButton: {
+    flexDirection: 'row',
+    height: 56,
+    paddingHorizontal: 32,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  unlockButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 });

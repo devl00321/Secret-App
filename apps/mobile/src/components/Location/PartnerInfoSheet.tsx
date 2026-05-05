@@ -166,11 +166,11 @@ export const PartnerInfoSheet = ({
     // Call the parent handler to send the cloud signal
     onPing();
     
-    setPingCooldown(60);
+    setPingCooldown(30);
   };
 
   const circumference = 2 * Math.PI * 11;
-  const strokeDashoffset = circumference - (pingCooldown / 60) * circumference;
+  const strokeDashoffset = circumference - (pingCooldown / 30) * circumference;
 
   const getBatteryIcon = (level: number = 100) => {
     const color = level < 20 ? '#FF4747' : level < 50 ? '#FFB020' : '#22C55E';

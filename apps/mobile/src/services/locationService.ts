@@ -117,9 +117,9 @@ export const locationService = {
       const { background } = await locationService.requestPermissions();
       if (background) {
         await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
-          accuracy: Location.Accuracy.Highest,
-          timeInterval: 10000,
-          distanceInterval: 5,
+          accuracy: Location.Accuracy.Balanced,
+          timeInterval: 15000,
+          distanceInterval: 10,
           foregroundService: {
             notificationTitle: "Luvv is sharing your location",
             notificationBody: "Keeping you and your partner safe 💙",

@@ -1,53 +1,71 @@
 import { 
-  createUserWithEmailAndPassword, 
   signInWithEmailAndPassword, 
+  createUserWithEmailAndPassword, 
   signOut,
-  updateProfile,
   signInWithPhoneNumber,
-  GoogleAuthProvider,
+  PhoneAuthProvider,
   signInWithCredential,
   ConfirmationResult
 } from 'firebase/auth';
-import { FirebaseRecaptchaVerifierModal } from 'expo-firebase-recaptcha';
 import { auth } from './firebase';
 
 export const authService = {
-  signup: async (email: string, password: string, displayName?: string) => {
-    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-    if (displayName) {
-      await updateProfile(userCredential.user, { displayName });
-    }
-    return userCredential.user;
-  },
-
+  /**
+   * Login with email and password
+   */
   login: async (email: string, password: string) => {
-    const userCredential = await signInWithEmailAndPassword(auth, email.trim(), password);
-    return userCredential.user;
-  },
-
-  signInWithPhone: async (
-    phoneNumber: string,
-    recaptchaVerifier: FirebaseRecaptchaVerifierModal | null
-  ): Promise<ConfirmationResult> => {
-    if (!recaptchaVerifier) {
-      throw new Error('Phone verification is not ready yet. Please try again.');
+    try {
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      return userCredential.user;
+    } catch (error) {
+      throw error;
     }
-
-    return await signInWithPhoneNumber(auth, phoneNumber, recaptchaVerifier);
   },
 
-  verifyOTP: async (confirmationResult: ConfirmationResult, code: string) => {
-    const userCredential = await confirmationResult.confirm(code);
-    return userCredential.user;
+  /**
+   * Signup with email and password
+   */
+  signup: async (email: string, password: string) => {
+    try {
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      return userCredential.user;
+    } catch (error) {
+      throw error;
+    }
   },
 
-  signInWithGoogle: async (idToken: string) => {
-    const credential = GoogleAuthProvider.credential(idToken);
-    const userCredential = await signInWithCredential(auth, credential);
-    return userCredential.user;
-  },
-
+  /**
+   * Logout the current user
+   */
   logout: async () => {
-    await signOut(auth);
+    try {
+      await signOut(auth);
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  /**
+   * Sign in with phone number (triggers OTP)
+   */
+  signInWithPhone: async (phoneNumber: string, recaptchaVerifier: any): Promise<ConfirmationResult> => {
+    try {
+      const confirmation = await signInWithPhoneNumber(auth, phoneNumber, recaptchaVerifier);
+      return confirmation;
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  /**
+   * Verify OTP code
+   */
+  verifyOTP: async (confirmationResult: ConfirmationResult, code: string) => {
+    try {
+      const userCredential = await confirmationResult.confirm(code);
+      return userCredential.user;
+    } catch (error) {
+      throw error;
+    }
   }
 };

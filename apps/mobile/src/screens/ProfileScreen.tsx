@@ -8,11 +8,14 @@ import { User, Lock, MessageSquareText, Shield, Palette, Edit2, X } from 'lucide
 import { useTheme } from '../theme';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 import { userService } from '../services/userService';
-import { TextInput, TouchableWithoutFeedback, StyleSheet, View, Text, ScrollView, Switch, TouchableOpacity, Platform } from 'react-native';
+import { TextInput, TouchableWithoutFeedback, StyleSheet, View, Text, ScrollView, Switch, TouchableOpacity, Platform, Alert } from 'react-native';
+import { useSettingsStore } from '../store/useSettingsStore';
+import { biometricService } from '../services/biometricService';
 
 export const ProfileScreen = () => {
   const theme = useTheme();
   const { logout, user, currentUserProfile, setCurrentUserProfile } = useAuthStore();
+  const { biometricLockEnabled, setBiometricLockEnabled } = useSettingsStore();
   const [aiEnabled, setAiEnabled] = useState(true);
   const [locationPermissions, setLocationPermissions] = useState(true);
 
@@ -36,6 +39,24 @@ export const ProfileScreen = () => {
       setEditModalVisible(false);
     } catch (e) {
       console.warn("Failed to update profile", e);
+    }
+  };
+
+  const handleToggleBiometric = async (value: boolean) => {
+    if (value) {
+      // Require auth before enabling
+      const success = await biometricService.authenticate('Confirm to enable App Lock');
+      if (success) {
+        setBiometricLockEnabled(true);
+      } else {
+        // Switch will automatically revert if we don't update state
+      }
+    } else {
+      // Require auth before disabling
+      const success = await biometricService.authenticate('Confirm to disable App Lock');
+      if (success) {
+        setBiometricLockEnabled(false);
+      }
     }
   };
 
@@ -96,6 +117,27 @@ export const ProfileScreen = () => {
             <Switch 
               value={locationPermissions} 
               onValueChange={setLocationPermissions}
+              trackColor={{ false: theme.border, true: theme.primary }}
+              thumbColor={Platform.OS === 'android' ? 'white' : undefined}
+            />
+          </View>
+        </Card>
+
+        <Text style={[styles.sectionTitle, { color: theme.textLight }]}>Privacy & Security</Text>
+        <Card style={styles.settingsCard}>
+          <View style={[styles.settingItem, styles.noBorder]}>
+            <View style={styles.settingLabelContainer}>
+              <View style={[styles.iconBox, { backgroundColor: '#FEE2E2' }]}>
+                <Lock size={20} color="#EF4444" />
+              </View>
+              <View style={styles.settingTextContent}>
+                <Text style={[styles.settingLabel, { color: theme.text }]}>Biometric App Lock</Text>
+                <Text style={[styles.settingDesc, { color: theme.textLight }]}>Require FaceID to open app</Text>
+              </View>
+            </View>
+            <Switch 
+              value={biometricLockEnabled} 
+              onValueChange={handleToggleBiometric}
               trackColor={{ false: theme.border, true: theme.primary }}
               thumbColor={Platform.OS === 'android' ? 'white' : undefined}
             />
