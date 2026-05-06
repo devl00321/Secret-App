@@ -39,6 +39,7 @@ export const Header = ({ title, showBack = false, rightElement, transparent = fa
           <TouchableOpacity 
             style={styles.backButton} 
             onPress={() => router.back()}
+            hitSlop={{ top: 15, bottom: 15, left: 20, right: 20 }}
           >
             <ArrowLeft size={24} color={textColor ?? theme.text} />
           </TouchableOpacity>

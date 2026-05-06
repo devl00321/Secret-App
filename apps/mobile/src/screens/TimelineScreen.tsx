@@ -1,72 +1,142 @@
-import { StyleSheet, View, Text, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { StyleSheet, View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Header } from '../components/Header';
 import { Card } from '../components/Card';
-import { Plus, Image as ImageIcon, FileText, Camera } from 'lucide-react-native';
+import { 
+  Plus, 
+  Image as ImageIcon, 
+  FileText, 
+  Camera, 
+  MapPin, 
+  ShieldAlert, 
+  Heart, 
+  Navigation2,
+  CalendarDays
+} from 'lucide-react-native';
 import { useTheme } from '../theme';
+import { useAuthStore } from '../store/useAuthStore';
+import { activityService, Activity } from '../services/activityService';
+import { imageService } from '../services/imageService';
+import { format } from 'date-fns';
 
 export const TimelineScreen = () => {
   const theme = useTheme();
-  const memories = [
-    {
-      id: '1',
-      type: 'image',
-      content: 'Our weekend getaway was amazing! 🏔️',
-      date: 'Oct 24, 2023',
-      imageUrl: 'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=400&q=80',
-    },
-    {
-      id: '2',
-      type: 'note',
-      content: 'Dont forget to pick up the groceries on your way home. Love you!',
-      date: 'Oct 23, 2023',
-    },
-    {
-      id: '3',
-      type: 'image',
-      content: 'Coffee dates are the best ☕️',
-      date: 'Oct 22, 2023',
-      imageUrl: 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=400&q=80',
+  const { coupleId, user } = useAuthStore();
+  const [activities, setActivities] = useState<Activity[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isUploading, setIsUploading] = useState(false);
+
+  useEffect(() => {
+    if (!coupleId) return;
+
+    const unsubscribe = activityService.subscribeToActivities(coupleId, (data) => {
+      setActivities(data);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [coupleId]);
+
+  const handleAddPhoto = async () => {
+    setIsUploading(true);
+    try {
+      const compressedUri = await imageService.pickAndCompressImage();
+      if (!compressedUri) return;
+
+      const downloadUrl = await imageService.uploadImage(compressedUri, 'timeline');
+      if (downloadUrl) {
+        await activityService.logActivity('memory', 'Shared a new photo! 📸', { imageUrl: downloadUrl });
+      }
+    } finally {
+      setIsUploading(false);
     }
-  ];
+  };
+
+  const getActivityIcon = (type: string) => {
+    const size = 20;
+    const color = theme.primary;
+    switch (type) {
+      case 'travel': return <Navigation2 size={size} color={color} />;
+      case 'sos': return <ShieldAlert size={size} color={theme.error} />;
+      case 'anniversary': return <Heart size={size} color="#FFD700" fill="#FFD700" />;
+      case 'location_saved': return <MapPin size={size} color={color} />;
+      case 'memory': return <Camera size={size} color={color} />;
+      default: return <FileText size={size} color={color} />;
+    }
+  };
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
       <Header 
-        title="Shared Timeline" 
+        title="Our Timeline" 
         showBack 
         rightElement={
-          <TouchableOpacity style={styles.addButton}>
+          <TouchableOpacity 
+            style={[styles.addButton, { backgroundColor: theme.primary }]}
+            onPress={() => activityService.logActivity('memory', 'Capturing a special moment... 📸')}
+          >
             <Plus color="white" size={24} />
           </TouchableOpacity>
         }
       />
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {memories.map((item) => (
-          <Card key={item.id} style={[styles.memoryCard, { backgroundColor: theme.surface }]}>
-            <Text style={[styles.date, { color: theme.textLight }]}>{item.date}</Text>
-            {item.imageUrl && (
-              <Image source={{ uri: item.imageUrl }} style={styles.image} contentFit="cover" />
-            )}
-            <Text style={[styles.content, { color: theme.text }]}>{item.content}</Text>
-            <View style={[styles.footer, { borderTopColor: theme.border }]}>
-              <View style={[styles.avatarMini, { backgroundColor: theme.primarySoft }]} />
-              <Text style={[styles.author, { color: theme.textLight }]}>Shared by you</Text>
-            </View>
-          </Card>
-        ))}
-      </ScrollView>
+      
+      {loading ? (
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color={theme.primary} />
+        </View>
+      ) : activities.length === 0 ? (
+        <View style={styles.center}>
+          <View style={[styles.emptyIconBox, { backgroundColor: theme.primarySoft }]}>
+            <CalendarDays size={40} color={theme.primary} />
+          </View>
+          <Text style={[styles.emptyTitle, { color: theme.text }]}>No memories yet</Text>
+          <Text style={[styles.emptySubtitle, { color: theme.textLight }]}>
+            Your shared journey starts here. Reached safely or save a place to see it here!
+          </Text>
+        </View>
+      ) : (
+        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+          {activities.map((item) => (
+            <Card key={item.id} style={[styles.memoryCard, { backgroundColor: theme.surface }]}>
+              <View style={styles.cardHeader}>
+                <View style={[styles.iconBox, { backgroundColor: theme.primarySoft }]}>
+                  {getActivityIcon(item.type)}
+                </View>
+                <View style={styles.headerInfo}>
+                  <Text style={[styles.date, { color: theme.textLight }]}>
+                    {format(item.timestamp, 'MMM dd, yyyy • h:mm a')}
+                  </Text>
+                  <Text style={[styles.author, { color: theme.primary }]}>
+                    {item.userId === user?.uid ? 'You' : item.userName}
+                  </Text>
+                </View>
+              </View>
+
+              <Text style={[styles.content, { color: theme.text }]}>{item.content}</Text>
+              
+              {item.imageUrl && (
+                <Image source={{ uri: item.imageUrl }} style={styles.image} contentFit="cover" />
+              )}
+            </Card>
+          ))}
+        </ScrollView>
+      )}
 
       <View style={[styles.fabContainer, { backgroundColor: theme.surface, borderColor: theme.border, borderWidth: theme.isDark ? 1 : 0 }]}>
-        <TouchableOpacity style={styles.fabItem}>
-          <Camera size={24} color={theme.primary} />
+        <TouchableOpacity style={styles.fabItem} onPress={handleAddPhoto} disabled={isUploading}>
+          {isUploading ? (
+            <ActivityIndicator size="small" color={theme.primary} />
+          ) : (
+            <Camera size={24} color={theme.primary} />
+          )}
         </TouchableOpacity>
-        <TouchableOpacity style={styles.fabItem}>
+        <TouchableOpacity style={styles.fabItem} onPress={() => activityService.logActivity('memory', 'Thinking of you... ❤️')}>
+          <Heart size={24} color={theme.secondary} />
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.fabItem} onPress={() => activityService.logActivity('memory', 'Pinned a special note 📝')}>
           <FileText size={24} color={theme.primary} />
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.fabItem}>
-          <ImageIcon size={24} color={theme.primary} />
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -77,58 +147,89 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 40,
+  },
   scrollContent: {
     padding: 20,
-    paddingBottom: 100,
+    paddingBottom: 120,
   },
   addButton: {
-    backgroundColor: '#FF6B6B',
-    borderRadius: 20,
+    borderRadius: 18,
     width: 36,
     height: 36,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 4,
   },
   memoryCard: {
-    marginBottom: 20,
+    marginBottom: 16,
+    padding: 16,
+    borderRadius: 24,
   },
-  date: {
-    fontSize: 12,
-    color: '#888',
-    marginBottom: 12,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-  },
-  image: {
-    width: '100%',
-    height: 200,
-    borderRadius: 15,
-    marginBottom: 15,
-  },
-  content: {
-    fontSize: 16,
-    color: '#333',
-    lineHeight: 24,
-    marginBottom: 15,
-  },
-  footer: {
+  cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderTopWidth: 1,
-    borderTopColor: '#F0F0F0',
-    paddingTop: 12,
+    marginBottom: 14,
   },
-  avatarMini: {
-    width: 24,
-    height: 24,
+  iconBox: {
+    width: 40,
+    height: 40,
     borderRadius: 12,
-    backgroundColor: '#FFE5E5',
-    marginRight: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  headerInfo: {
+    flex: 1,
+  },
+  date: {
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   author: {
     fontSize: 12,
-    color: '#666',
+    fontWeight: '800',
+    marginTop: 1,
+  },
+  image: {
+    width: '100%',
+    height: 220,
+    borderRadius: 18,
+    marginTop: 10,
+  },
+  content: {
+    fontSize: 15,
+    lineHeight: 22,
     fontWeight: '500',
+  },
+  emptyIconBox: {
+    width: 80,
+    height: 80,
+    borderRadius: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+  },
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: '900',
+    marginBottom: 8,
+  },
+  emptySubtitle: {
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 20,
+    opacity: 0.7,
   },
   fabContainer: {
     position: 'absolute',
@@ -136,17 +237,17 @@ const styles = StyleSheet.create({
     right: 20,
     flexDirection: 'row',
     borderRadius: 30,
-    padding: 8,
+    padding: 6,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.15,
+    shadowRadius: 20,
+    elevation: 10,
   },
   fabItem: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
     marginHorizontal: 4,

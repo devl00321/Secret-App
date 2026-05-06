@@ -71,9 +71,24 @@ export default function RootLayout() {
         userUnsubscribe = onSnapshot(doc(db, 'users', firebaseUser.uid), async (snapshot) => {
           if (snapshot.exists()) {
             const data = snapshot.data();
-            setCurrentUserProfile(data as import('../src/services/userService').PartnerProfile);
+            
+            // CRITICAL: Preserve the anniversaryDate if it's already in the store (from couple doc)
+            const currentStoreProfile = useAuthStore.getState().currentUserProfile;
+            const mergedProfile = {
+              ...data,
+              anniversaryDate: currentStoreProfile?.anniversaryDate || data.anniversaryDate
+            } as import('../src/services/userService').PartnerProfile;
+
+            setCurrentUserProfile(mergedProfile);
             setCoupleId(data.coupleId || null);
             
+            // Sync saved places from Firestore to LocationStore
+            if (data.savedPlaces) {
+              import('../src/store/useLocationStore').then(({ useLocationStore }) => {
+                useLocationStore.getState().setSavedPlaces(data.savedPlaces);
+              });
+            }
+
             if (data.partnerId) {
               const partnerData = await userService.getUserData(data.partnerId);
               setPartner(partnerData);
@@ -110,11 +125,35 @@ export default function RootLayout() {
       console.log('[RootLayout] Initializing Safety Listeners...');
     }, 500);
 
-    const sosUnsubscribe = locationService.subscribeToCoupleSos(coupleId);
+    const sosUnsubscribe = locationService.subscribeToCoupleSos(coupleId, user.uid);
     const pingUnsubscribe = locationService.subscribeToIncomingPings(coupleId, (ping) => {
-      // Global ping handling could go here (haptics are handled inside the service usually, 
-      // but let's keep it simple for now as LocationScreen also handles visual anim)
+      // Global ping handling
+      import('../src/services/alertService').then(({ alertService }) => {
+        alertService.triggerHeartbeatHaptics();
+      });
+      import('../src/store/useLocationStore').then(({ useLocationStore }) => {
+        useLocationStore.getState().setIncomingPing(ping);
+        // Clear the visual ping after 15 seconds to match haptics
+        setTimeout(() => {
+          useLocationStore.getState().setIncomingPing(null);
+        }, 15000);
+      });
     });
+
+    // PRESENCE HEARTBEAT (Update every 20s while active)
+    const updatePresence = async () => {
+      if (!user?.uid) return;
+      try {
+        const { doc, updateDoc, serverTimestamp } = await import('firebase/firestore');
+        const { db } = await import('../src/services/firebase');
+        await updateDoc(doc(db, 'users', user.uid), {
+          isOnline: true,
+          lastActive: serverTimestamp()
+        });
+      } catch (e) {}
+    };
+    updatePresence();
+    const presenceInterval = setInterval(updatePresence, 20000);
 
     let partnerUnsubscribe = () => {};
     if (currentUserProfile?.partnerId) {
@@ -126,29 +165,32 @@ export default function RootLayout() {
       sosUnsubscribe();
       pingUnsubscribe();
       partnerUnsubscribe();
+      clearInterval(presenceInterval);
       // Ensure siren stops if app is totally unmounted (rare)
       import('../src/services/alertService').then(({ alertService }) => alertService.stopSiren());
     };
   }, [coupleId, user?.uid, currentUserProfile?.partnerId]);
 
-  // 1.2 Couple Data Listener (for anniversary etc)
+  // 1.2 Couple Data Listener (Source of truth for shared info like anniversary)
   useEffect(() => {
     if (!coupleId) return;
 
     const unsubscribe = onSnapshot(doc(db, 'couples', coupleId), (snapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.data();
-        if (data.anniversaryDate && currentUserProfile) {
-          setCurrentUserProfile({
-            ...currentUserProfile,
-            anniversaryDate: data.anniversaryDate
-          });
+        if (data.anniversaryDate) {
+          // Sync to store immediately so components can use it
+          useAuthStore.setState(state => ({
+            currentUserProfile: state.currentUserProfile 
+              ? { ...state.currentUserProfile, anniversaryDate: data.anniversaryDate }
+              : null
+          }));
         }
       }
     });
 
     return () => unsubscribe();
-  }, [coupleId, !!currentUserProfile]);
+  }, [coupleId]);
 
   // 2. Navigation Control
   useEffect(() => {

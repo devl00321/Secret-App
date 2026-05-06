@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 import { Header } from '../components/Header';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
@@ -16,6 +17,7 @@ export const ProfileScreen = () => {
   const theme = useTheme();
   const { logout, user, currentUserProfile, setCurrentUserProfile } = useAuthStore();
   const { biometricLockEnabled, setBiometricLockEnabled } = useSettingsStore();
+  const router = useRouter();
   const [aiEnabled, setAiEnabled] = useState(true);
   const [locationPermissions, setLocationPermissions] = useState(true);
 
@@ -146,7 +148,10 @@ export const ProfileScreen = () => {
 
         <Text style={[styles.sectionTitle, { color: theme.textLight }]}>Account</Text>
         <Card style={styles.settingsCard}>
-          <TouchableOpacity style={[styles.accountItem, { borderBottomColor: theme.border }]}>
+          <TouchableOpacity 
+            style={[styles.accountItem, { borderBottomColor: theme.border }]}
+            onPress={() => router.push('/(app)/privacy')}
+          >
             <Lock size={20} color={theme.textLight} />
             <Text style={[styles.accountLabel, { color: theme.text }]}>Privacy Settings</Text>
           </TouchableOpacity>

@@ -2,7 +2,7 @@ import * as SMS from 'expo-sms';
 import { Linking, Platform } from 'react-native';
 import { db, auth, storage } from './firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { doc, updateDoc, arrayUnion, serverTimestamp } from 'firebase/firestore';
+import { doc, updateDoc, arrayUnion, serverTimestamp, collection, addDoc } from 'firebase/firestore';
 
 export const emergencyService = {
   /**
@@ -92,6 +92,17 @@ export const emergencyService = {
           type: cameraType
         }),
         'activeSos.lastPhotoAt': serverTimestamp()
+      });
+
+      // 5. Post to Chat automatically
+      await addDoc(collection(db, 'messages'), {
+        text: `📸 Emergency ${cameraType} photo captured.`,
+        imageUrl: downloadUrl,
+        senderId: userId,
+        coupleId: coupleId,
+        createdAt: serverTimestamp(),
+        isRead: false,
+        isEmergency: true // Label for special styling if needed
       });
 
       return downloadUrl;

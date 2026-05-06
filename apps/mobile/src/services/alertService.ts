@@ -1,6 +1,9 @@
 import { Platform, Vibration } from 'react-native';
 import { Audio } from 'expo-av';
 import * as Haptics from 'expo-haptics';
+import { useLocationStore } from '../store/useLocationStore';
+import { useAuthStore } from '../store/useAuthStore';
+import { auth } from './firebase';
 
 /**
  * Priority-based Alert Escalation Service
@@ -16,18 +19,39 @@ export type AlertPriority = 'critical' | 'warning' | 'info';
 let sirenSound: Audio.Sound | null = null;
 let sirenInterval: ReturnType<typeof setInterval> | null = null;
 
+// Local state to ensure absolute silence for the victim even if Firestore sync is slow
+let victimSilenceOverride = false;
+
 // Generate an aggressive siren tone using oscillating vibration patterns
 const SIREN_VIBRATION_PATTERN = Platform.OS === 'android'
   ? [0, 600, 100, 600, 100, 600, 100, 600, 100, 1000] // Aggressive sharp pulses
   : []; 
 
 export const alertService = {
+  setVictimSilence: (silent: boolean) => {
+    victimSilenceOverride = silent;
+    if (silent) {
+      alertService.stopSiren();
+      Vibration.cancel();
+    }
+  },
   /**
    * Trigger an alert with the given priority level.
    * Higher priorities produce louder, more persistent alerts.
    */
   triggerAlert: async (priority: AlertPriority, title: string, body: string) => {
-    console.log(`[AlertService] Triggering ${priority} alert: ${title}`);
+    const { activeSos } = useLocationStore.getState();
+    const userId = useAuthStore.getState().user?.uid || auth.currentUser?.uid;
+    
+    console.log(`[AlertService] ATTEMPT: ${priority} | User: ${userId} | SOS TriggeredBy: ${activeSos?.triggeredBy} | Silent: ${activeSos?.isSilent}`);
+
+    // FINAL SAFETY GATE: If this is a Silent SOS triggered by ME, absolute silence.
+    if (victimSilenceOverride || (activeSos?.isActive && activeSos.isSilent && activeSos.triggeredBy === userId)) {
+      console.log('[AlertService] SILENT SOS SUPPRESSION ACTIVATED - BLOCKING ALL SOUND/VIBRATION');
+      return;
+    }
+
+    console.log(`[AlertService] EXECUTING: ${priority} alert: ${title}`);
 
     switch (priority) {
       case 'critical':
@@ -72,6 +96,14 @@ export const alertService = {
   },
 
   _startSirenHaptics: () => {
+    const { activeSos } = useLocationStore.getState();
+    const userId = useAuthStore.getState().user?.uid || auth.currentUser?.uid;
+    
+    if (victimSilenceOverride || (activeSos?.isActive && activeSos.isSilent && activeSos.triggeredBy === userId)) {
+      console.log('[AlertService] EMERGENCY BRAKE: Haptics blocked during Silent SOS.');
+      return;
+    }
+
     // Stop any existing siren
     alertService.stopSiren();
 
@@ -94,6 +126,14 @@ export const alertService = {
   },
 
   _playSirenTone: async () => {
+    const { activeSos } = useLocationStore.getState();
+    const userId = useAuthStore.getState().user?.uid || auth.currentUser?.uid;
+    
+    if (victimSilenceOverride || (activeSos?.isActive && activeSos.isSilent && activeSos.triggeredBy === userId)) {
+      console.log('[AlertService] EMERGENCY BRAKE: Siren blocked during Silent SOS.');
+      return;
+    }
+
     try {
       // Ensure any existing sound is cleaned up first
       if (sirenSound) {
@@ -142,6 +182,12 @@ export const alertService = {
   _triggerWarning: async (_title: string, _body: string) => {
     if (Platform.OS === 'web') return;
 
+    const { activeSos } = useLocationStore.getState();
+    const userId = useAuthStore.getState().user?.uid || auth.currentUser?.uid;
+    if (victimSilenceOverride || (activeSos?.isActive && activeSos.isSilent && activeSos.triggeredBy === userId)) {
+      return;
+    }
+
     try {
       // Medium-intensity haptic burst (3 pulses)
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
@@ -167,6 +213,12 @@ export const alertService = {
   _triggerInfo: async (_title: string, _body: string) => {
     if (Platform.OS === 'web') return;
 
+    const { activeSos } = useLocationStore.getState();
+    const userId = useAuthStore.getState().user?.uid || auth.currentUser?.uid;
+    if (victimSilenceOverride || (activeSos?.isActive && activeSos.isSilent && activeSos.triggeredBy === userId)) {
+      return;
+    }
+
     try {
       // Single gentle haptic
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -175,10 +227,47 @@ export const alertService = {
     }
   },
 
+  // ─── HEARTBEAT: Gentle double-pulse for 15 seconds ──────────────────
+  
+  triggerHeartbeatHaptics: async () => {
+    if (Platform.OS === 'web') return;
+
+    let elapsed = 0;
+    const duration = 15000; // 15 seconds
+    const interval = 1500;  // Every 1.5 seconds
+
+    const pulse = async () => {
+      // First beat
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      // Short delay between beats
+      setTimeout(async () => {
+        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      }, 150);
+    };
+
+    // Initial pulse
+    pulse();
+
+    const heartbeatInterval = setInterval(() => {
+      elapsed += interval;
+      if (elapsed >= duration) {
+        clearInterval(heartbeatInterval);
+        return;
+      }
+      pulse();
+    }, interval);
+  },
+
   // ─── Fallback vibration ────────────────────────────────────────────
 
   _fallbackVibrate: (priority: AlertPriority) => {
     if (Platform.OS === 'web') return;
+
+    const { activeSos } = useLocationStore.getState();
+    const userId = useAuthStore.getState().user?.uid || auth.currentUser?.uid;
+    if (victimSilenceOverride || (activeSos?.isActive && activeSos.isSilent && activeSos.triggeredBy === userId)) {
+      return;
+    }
 
     switch (priority) {
       case 'critical':

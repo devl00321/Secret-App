@@ -1,4 +1,5 @@
 import { useColorScheme } from 'react-native';
+import { useAuthStore } from '../store/useAuthStore';
 
 export const COLORS = {
   light: {
@@ -17,6 +18,7 @@ export const COLORS = {
     bubblePartner: '#F3F4F6',
     glass: 'rgba(255, 255, 255, 0.8)',
     glassBorder: 'rgba(255, 255, 255, 0.5)',
+    heartPink: '#FF6B6B',
   },
   dark: {
     primary: '#FF8E8E',
@@ -34,14 +36,63 @@ export const COLORS = {
     bubblePartner: '#2C2C2E',
     glass: 'rgba(26, 26, 26, 0.8)',
     glassBorder: 'rgba(255, 255, 255, 0.1)',
+    heartPink: '#FF6B6B',
+  },
+  anniversary: {
+    primary: '#D4AF37', // Metallic Gold
+    primarySoft: '#FDF6E3',
+    secondary: '#B8860B', // Dark Gold
+    background: '#FFFDF0', // Creamy Gold
+    surface: '#FFFFFF',
+    text: '#2C1E0F', // Warm dark brown
+    textLight: '#938B74',
+    border: '#EEDC82',
+    success: '#4CAF50',
+    error: '#FF4747',
+    warmBg: '#FEF9E7',
+    bubbleMe: '#D4AF37',
+    bubblePartner: '#F5F5F5',
+    glass: 'rgba(255, 253, 240, 0.9)',
+    glassBorder: 'rgba(212, 175, 55, 0.4)',
+    heartPink: '#D4AF37',
   }
 };
 
 export const useTheme = () => {
   const colorScheme = useColorScheme();
-  const theme = colorScheme === 'dark' ? COLORS.dark : COLORS.light;
+  const { currentUserProfile } = useAuthStore();
+  
+  let baseTheme = colorScheme === 'dark' ? { ...COLORS.dark } : { ...COLORS.light };
+
+  // ── ANNIVERSARY THEME DETECTION ──
+  if (currentUserProfile?.anniversaryDate) {
+    const [d, m] = currentUserProfile.anniversaryDate.split('/');
+    const today = new Date();
+    const annDay = parseInt(d, 10);
+    const annMonth = parseInt(m, 10) - 1; // 0-indexed month
+
+    if (today.getDate() === annDay && today.getMonth() === annMonth) {
+      baseTheme = { ...COLORS.anniversary };
+    }
+  }
+
+  // Gender-based theme optimization (skipped if Anniversary theme is active for maximum focus)
+  const isAnniversaryDay = baseTheme.primary === COLORS.anniversary.primary;
+  
+  if (!isAnniversaryDay && currentUserProfile?.gender === 'Male') {
+    const pink = baseTheme.primary;
+    const purple = baseTheme.secondary;
+    baseTheme.primary = purple;
+    baseTheme.secondary = pink;
+    baseTheme.bubbleMe = purple;
+    // Swap soft background if needed
+    if (baseTheme.primarySoft) {
+      baseTheme.primarySoft = colorScheme === 'dark' ? '#1F1F2D' : '#F0F0FF';
+    }
+  }
+
   return {
-    ...theme,
+    ...baseTheme,
     isDark: colorScheme === 'dark',
     spacing: SPACING,
     radius: RADIUS,

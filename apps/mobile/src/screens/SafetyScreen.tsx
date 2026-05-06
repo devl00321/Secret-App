@@ -42,11 +42,23 @@ export const SafetyScreen = () => {
   // Track the SOS Active state to force the background to red if it was triggered elsewhere
   useEffect(() => {
     if (activeSos?.isActive) {
-      Animated.timing(progressAnim, {
-        toValue: 1,
-        duration: 800,
-        useNativeDriver: false,
-      }).start();
+      const userId = auth.currentUser?.uid;
+      const isVictim = activeSos.triggeredBy === userId;
+      
+      // If I'm the victim and it's silent, don't show the red background
+      if (isVictim && activeSos.isSilent) {
+        Animated.timing(progressAnim, {
+          toValue: 0.1, // Very subtle tint
+          duration: 800,
+          useNativeDriver: false,
+        }).start();
+      } else {
+        Animated.timing(progressAnim, {
+          toValue: 1,
+          duration: 800,
+          useNativeDriver: false,
+        }).start();
+      }
     } else if (!activeSos?.isActive) {
       Animated.timing(progressAnim, {
         toValue: 0,
@@ -57,7 +69,7 @@ export const SafetyScreen = () => {
   }, [activeSos?.isActive]);
 
   const handleSOS = async () => {
-    await locationService.triggerSos();
+    await locationService.triggerSos(isSilentMode);
   };
 
   const handleCancelSOS = async () => {
@@ -103,7 +115,10 @@ export const SafetyScreen = () => {
     <Animated.View style={[styles.container, { backgroundColor }]}>
       <StatusBar style={activeSos?.isActive ? 'light' : 'auto'} animated />
       <SafeAreaView style={styles.safeArea}>
-        <EmergencyCapture isActive={!!activeSos?.isActive && activeSos.triggeredBy === auth.currentUser?.uid} />
+        <EmergencyCapture 
+          isActive={!!activeSos?.isActive && activeSos.triggeredBy === auth.currentUser?.uid} 
+          isSilent={activeSos?.isSilent}
+        />
         <Header 
           title="Safety Center" 
           showBack 
@@ -119,12 +134,15 @@ export const SafetyScreen = () => {
           <View style={styles.sosContainer}>
             <SOSButton 
               isActive={!!activeSos?.isActive} 
+              isSilent={activeSos?.isSilent}
               onTrigger={handleSOS} 
               onCancel={handleCancelSOS}
               progressAnim={progressAnim}
             />
             <Animated.Text style={[styles.sosHint, { color: textLightColor }]}>
-              {activeSos?.isActive ? "EMERGENCY SIGNALS ACTIVE" : "Hold for 3 seconds to alert partner"}
+              {activeSos?.isActive 
+                ? (activeSos.isSilent ? "SILENT MODE ACTIVATED" : "EMERGENCY SIGNALS ACTIVE") 
+                : "Hold for 3 seconds to alert partner"}
             </Animated.Text>
           </View>
 

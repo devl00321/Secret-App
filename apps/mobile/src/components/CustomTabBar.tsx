@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Platform, useWindowDimensions } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Platform, useWindowDimensions, Dimensions } from 'react-native';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Home, MapPin, Shield, Heart } from 'lucide-react-native';
@@ -21,7 +21,7 @@ export const CustomTabBar = ({ state, descriptors, navigation }: BottomTabBarPro
       case 'index': return <Home color={color} size={size} />;
       case 'location': return <MapPin color={color} size={size} />;
       case 'safety': return <Shield color={color} size={size} />;
-      case 'timeline': return <Heart color={color} size={size} />;
+      case 'timeline': return <Heart color={color === theme.primary ? theme.heartPink : color} size={size} fill={color === theme.primary ? theme.heartPink : 'transparent'} />;
       default: return <Home color={color} size={size} />;
     }
   };
@@ -108,6 +108,7 @@ const TabItem = ({
       onPress={onPress}
       style={styles.tabItem}
       activeOpacity={0.7}
+      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
     >
       <Animated.View style={[styles.iconWrapper, animatedStyle]}>
         {icon}

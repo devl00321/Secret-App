@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, Platform, StyleSheet } from 'react-native';
-import MapView, { Marker, Circle, PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, { Marker, Circle, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import MapViewDirections from 'react-native-maps-directions';
 import { HeartMarker } from './HeartMarker';
 import { useTheme } from '../../theme';
@@ -33,6 +33,12 @@ interface MapComponentProps {
   onRegionChangeComplete?: (region: any) => void;
   onMarkerPress?: () => void;
   partnerName?: string;
+  myColor?: string;
+  partnerColor?: string;
+  walkSafePath?: { latitude: number; longitude: number }[];
+  partnerWalkSafePath?: { latitude: number; longitude: number }[];
+  lastCompletedPath?: { latitude: number; longitude: number }[] | null;
+  partnerLastCompletedPath?: { latitude: number; longitude: number }[] | null;
 }
 
 const getPlaceIcon = (type: string, color: string) => {
@@ -66,7 +72,13 @@ export const MapComponent = React.memo(({
   isSelectingLocation,
   onRegionChangeComplete,
   onMarkerPress,
-  partnerName
+  partnerName,
+  myColor,
+  partnerColor,
+  walkSafePath,
+  partnerWalkSafePath,
+  lastCompletedPath,
+  partnerLastCompletedPath
 }: MapComponentProps) => {
   const [shouldTrack, setShouldTrack] = React.useState(true);
 
@@ -112,17 +124,19 @@ export const MapComponent = React.memo(({
         {/* Only render markers if coordinates are valid to prevent Native Crashes */}
         {userCoords && userCoords.latitude && (
           <Marker
+            key={`me-${shouldTrack ? 'tracking' : 'static'}`}
             coordinate={userCoords}
             title="Me"
             tracksViewChanges={shouldTrack}
             anchor={{ x: 0.5, y: 0.5 }}
           >
-            <HeartMarker type="me" initial={user?.displayName?.[0] || 'M'} />
+            <HeartMarker type="me" initial={user?.displayName?.[0] || 'M'} color={myColor} />
           </Marker>
         )}
 
         {partnerCoords && partnerCoords.latitude && (
           <Marker
+            key={`partner-${shouldTrack ? 'tracking' : 'static'}`}
             coordinate={partnerCoords}
             title="Partner"
             tracksViewChanges={shouldTrack}
@@ -133,11 +147,83 @@ export const MapComponent = React.memo(({
               type="partner" 
               initial={(partnerName || 'P')[0].toUpperCase()} 
               batteryLevel={partnerLocation?.batteryLevel}
+              color={partnerColor}
             />
           </Marker>
         )}
 
-        {userCoords && partnerCoords && GOOGLE_MAPS_APIKEY && GOOGLE_MAPS_APIKEY !== 'YOUR_GOOGLE_MAPS_API_KEY_HERE' && (
+        {/* GOLDEN BREADCRUMBS (Trace of last completed path) */}
+        {lastCompletedPath && lastCompletedPath.length > 1 && (
+          <Polyline
+            coordinates={lastCompletedPath}
+            strokeColor="#D4AF37" // Metallic Gold
+            strokeWidth={5}
+            lineDashPattern={[2, 12]} // Breadcrumb effect
+            geodesic={true}
+            zIndex={1}
+          />
+        )}
+
+        {/* PARTNER GOLDEN BREADCRUMBS */}
+        {partnerLastCompletedPath && partnerLastCompletedPath.length > 1 && (
+          <Polyline
+            coordinates={partnerLastCompletedPath}
+            strokeColor="#D4AF37" // Metallic Gold
+            strokeWidth={5}
+            lineDashPattern={[2, 12]} // Breadcrumb effect
+            geodesic={true}
+            zIndex={1}
+          />
+        )}
+
+        {/* LIVE PATH TRACKING (Breadcrumbs) */}
+        {walkSafePath && walkSafePath.length > 0 && (
+          <>
+            {/* Start Point Marker */}
+            <Circle
+              center={walkSafePath[0]}
+              radius={10}
+              fillColor={myColor || theme.primary}
+              strokeColor="white"
+              strokeWidth={2}
+              zIndex={3}
+            />
+            {walkSafePath.length > 1 && (
+              <Polyline
+                coordinates={walkSafePath}
+                strokeColor={myColor || theme.primary}
+                strokeWidth={6}
+                geodesic={true}
+                zIndex={2}
+              />
+            )}
+          </>
+        )}
+
+        {partnerWalkSafePath && partnerWalkSafePath.length > 0 && (
+          <>
+            {/* Partner Start Point Marker */}
+            <Circle
+              center={partnerWalkSafePath[0]}
+              radius={10}
+              fillColor={partnerColor || theme.secondary}
+              strokeColor="white"
+              strokeWidth={2}
+              zIndex={3}
+            />
+            {partnerWalkSafePath.length > 1 && (
+              <Polyline
+                coordinates={partnerWalkSafePath}
+                strokeColor={partnerColor || theme.secondary}
+                strokeWidth={6}
+                geodesic={true}
+                zIndex={2}
+              />
+            )}
+          </>
+        )}
+
+        {userCoords && partnerCoords && GOOGLE_MAPS_APIKEY && GOOGLE_MAPS_APIKEY !== 'YOUR_GOOGLE_MAPS_API_KEY_HERE' && !walkSafePath && (
           <MapViewDirections
             origin={userCoords}
             destination={partnerCoords}
@@ -155,9 +241,37 @@ export const MapComponent = React.memo(({
           />
         )}
 
+        {/* REACH SAFELY ROUTE (Remaining Path for User) */}
+        {userCoords && destination && GOOGLE_MAPS_APIKEY && GOOGLE_MAPS_APIKEY !== 'YOUR_GOOGLE_MAPS_API_KEY_HERE' && (
+          <MapViewDirections
+            origin={userCoords}
+            destination={{ latitude: destination.latitude, longitude: destination.longitude }}
+            apikey={GOOGLE_MAPS_APIKEY}
+            strokeWidth={5}
+            strokeColor={myColor || theme.primary}
+            mode="WALKING"
+            optimizeWaypoints={true}
+            precision="high"
+          />
+        )}
+
+        {/* REACH SAFELY ROUTE (Remaining Path for Partner) */}
+        {partnerCoords && partnerWalkSafePath && GOOGLE_MAPS_APIKEY && GOOGLE_MAPS_APIKEY !== 'YOUR_GOOGLE_MAPS_API_KEY_HERE' && (
+          <MapViewDirections
+            origin={partnerCoords}
+            destination={partnerWalkSafePath[partnerWalkSafePath.length - 1]} // Assuming end of path is destination or we can pass destination directly if available
+            apikey={GOOGLE_MAPS_APIKEY}
+            strokeWidth={5}
+            strokeColor={partnerColor || theme.secondary}
+            mode="WALKING"
+            precision="high"
+          />
+        )}
+
         {savedPlaces?.filter(p => p && p.latitude && p.longitude).map((place) => (
           <React.Fragment key={place.id}>
             <Marker
+              key={`${place.id}-${shouldTrack ? 'tracking' : 'static'}`}
               coordinate={{
                 latitude: Number(place.latitude),
                 longitude: Number(place.longitude),
@@ -166,11 +280,13 @@ export const MapComponent = React.memo(({
               tracksViewChanges={shouldTrack}
             >
               <View style={styles.placeMarker}>
-                <View style={[styles.placeTag, { borderColor: theme.border }]}>
-                  <Text style={[styles.placeText, { color: theme.text }]}>{place.name}</Text>
+                <View style={[styles.placeTag, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+                  <Text style={[styles.placeText, { color: theme.text }]} numberOfLines={1}>
+                    {place.name}
+                  </Text>
                 </View>
-                <View style={[styles.placeIcon, { backgroundColor: theme.surface, borderColor: theme.primary }]}>
-                  {getPlaceIcon(place.type, theme.primary)}
+                <View style={[styles.placeIcon, { backgroundColor: theme.surface, borderColor: place.color || (place.isPartner ? theme.secondary : theme.primary) }]}>
+                  {getPlaceIcon(place.type, place.color || (place.isPartner ? theme.secondary : theme.primary))}
                 </View>
               </View>
             </Marker>
@@ -180,8 +296,8 @@ export const MapComponent = React.memo(({
                 longitude: Number(place.longitude),
               }}
               radius={Number(place.radius || 200)}
-              strokeColor={theme.primary + '80'}
-              fillColor={theme.primary + '20'}
+              strokeColor={(place.color || (place.isPartner ? theme.secondary : theme.primary)) + '80'}
+              fillColor={(place.color || (place.isPartner ? theme.secondary : theme.primary)) + '20'}
               zIndex={1}
               strokeWidth={1}
             />
@@ -201,14 +317,21 @@ export const MapComponent = React.memo(({
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  placeMarker: { alignItems: 'center' },
+  placeMarker: { 
+    alignItems: 'center',
+    width: 120, // Explicit width for Android stability
+    height: 80, // Explicit height for Android stability
+    justifyContent: 'flex-end',
+  },
   placeTag: {
-    backgroundColor: 'white',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
     marginBottom: 4,
-    borderWidth: 1,
+    borderWidth: 1.5,
+    maxWidth: 120,
+    alignItems: 'center',
+    justifyContent: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,

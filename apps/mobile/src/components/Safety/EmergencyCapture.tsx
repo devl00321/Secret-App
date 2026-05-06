@@ -7,15 +7,17 @@ import { useLocationStore } from '../../store/useLocationStore';
 
 interface EmergencyCaptureProps {
   isActive: boolean;
+  isSilent?: boolean;
 }
 
-export const EmergencyCapture: React.FC<EmergencyCaptureProps> = ({ isActive }) => {
+export const EmergencyCapture: React.FC<EmergencyCaptureProps> = ({ isActive, isSilent }) => {
   const [permission, requestPermission] = useCameraPermissions();
   const [facing, setFacing] = useState<CameraType>('back');
   const [isCapturing, setIsCapturing] = useState(false);
   const [evidenceUrl, setEvidenceUrl] = useState<string | null>(null);
   const [isCameraReady, setIsCameraReady] = useState(false);
   const cameraRef = useRef<CameraView>(null);
+  const activeRef = useRef(isActive);
   const { coupleId } = useAuthStore();
   const targetPerCamera = 10;
 
@@ -25,6 +27,11 @@ export const EmergencyCapture: React.FC<EmergencyCaptureProps> = ({ isActive }) 
       requestPermission();
     }
   }, [permission]);
+
+  // Sync activeRef with isActive prop
+  useEffect(() => {
+    activeRef.current = isActive;
+  }, [isActive]);
 
   // Monitor SOS activity
   useEffect(() => {
@@ -48,6 +55,7 @@ export const EmergencyCapture: React.FC<EmergencyCaptureProps> = ({ isActive }) 
     await new Promise(resolve => setTimeout(resolve, 2000)); // Longer wait for init
     
     for (let i = 0; i < targetPerCamera; i++) {
+      if (!activeRef.current) break;
       if (cameraRef.current) {
         try {
           const photo = await cameraRef.current.takePictureAsync({ 
@@ -60,6 +68,19 @@ export const EmergencyCapture: React.FC<EmergencyCaptureProps> = ({ isActive }) 
             if (!firstPhotoUrl && url) {
               firstPhotoUrl = url;
               setEvidenceUrl(url);
+              
+              // AUTO-TRIGGER WHATSAPP WITH THE VERY FIRST PHOTO
+              const { currentUserProfile } = useAuthStore.getState();
+              const contacts = currentUserProfile?.emergencyContacts || (currentUserProfile?.emergencyContact ? [currentUserProfile.emergencyContact] : []);
+              if (contacts.length > 0) {
+                const { userLocation } = useLocationStore.getState();
+                emergencyService.notifyWhatsApp(
+                  { latitude: userLocation?.coords.latitude || 0, longitude: userLocation?.coords.longitude || 0 },
+                  contacts[0].phone,
+                  url
+                );
+                setCurrentContactIndex(1);
+              }
             }
           }
         } catch (e) {
@@ -70,11 +91,17 @@ export const EmergencyCapture: React.FC<EmergencyCaptureProps> = ({ isActive }) 
     }
 
     // 2. Front Camera Sequence (10 photos)
+    if (!activeRef.current) {
+      setIsCapturing(false);
+      return;
+    }
+
     setFacing('front');
     setIsCameraReady(false);
     await new Promise(resolve => setTimeout(resolve, 2500)); // Even longer for front cam switch
     
     for (let i = 0; i < targetPerCamera; i++) {
+      if (!activeRef.current) break;
       if (cameraRef.current) {
         try {
           const photo = await cameraRef.current.takePictureAsync({ 
@@ -99,19 +126,8 @@ export const EmergencyCapture: React.FC<EmergencyCaptureProps> = ({ isActive }) 
     setIsCapturing(false);
     console.log('[EmergencyCapture] Sequence complete');
 
-    // AUTO-TRIGGER FIRST CONTACT WHATSAPP WITH EVIDENCE LINK
-    const { currentUserProfile } = useAuthStore.getState();
-    const contacts = currentUserProfile?.emergencyContacts || (currentUserProfile?.emergencyContact ? [currentUserProfile.emergencyContact] : []);
-    
-    if (contacts.length > 0) {
-      const { userLocation } = useLocationStore.getState();
-      emergencyService.notifyWhatsApp(
-        { latitude: userLocation?.coords.latitude || 0, longitude: userLocation?.coords.longitude || 0 },
-        contacts[0].phone,
-        firstPhotoUrl || undefined
-      );
-      setCurrentContactIndex(1);
-    }
+    // Contacts after the first one can be triggered manually via the UI
+
   };
 
   const [currentContactIndex, setCurrentContactIndex] = useState(0);

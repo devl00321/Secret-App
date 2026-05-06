@@ -10,7 +10,8 @@ import {
   Platform, 
   ActivityIndicator,
   PanResponder,
-  Modal
+  Modal,
+  Linking
 } from 'react-native';
 import { Image } from 'expo-image';
 import { 
@@ -242,6 +243,7 @@ export const PartnerInfoSheet = ({
                   onPress={onRefresh} 
                   style={[styles.refreshBtn, { backgroundColor: theme.surface }]}
                   disabled={isRefreshing}
+                  hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
                 >
                   {isRefreshing ? (
                     <ActivityIndicator size="small" color={theme.primary} />
@@ -249,7 +251,11 @@ export const PartnerInfoSheet = ({
                     <RefreshCcw size={18} color={theme.primary} />
                   )}
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => snapTo(SNAP_BOTTOM)} style={[styles.closeBtn, { backgroundColor: theme.surface }]}>
+                <TouchableOpacity 
+                  onPress={() => snapTo(SNAP_BOTTOM)} 
+                  style={[styles.closeBtn, { backgroundColor: theme.surface }]}
+                  hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+                >
                   <X color={theme.text} size={20} />
                 </TouchableOpacity>
               </View>
@@ -283,6 +289,7 @@ export const PartnerInfoSheet = ({
               <TouchableOpacity 
                 style={[styles.actionCard, { backgroundColor: theme.surface }]}
                 onPress={onLocate}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
                 <View style={[styles.actionIconCircle, { backgroundColor: '#F1F5F9' }]}>
                   <MapPin color={theme.primary} size={24} fill={theme.primary + '20'} />
@@ -294,6 +301,7 @@ export const PartnerInfoSheet = ({
               <TouchableOpacity 
                 style={[styles.actionCard, { backgroundColor: theme.surface }]}
                 onPress={onChat}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
                 <View style={[styles.actionIconCircle, { backgroundColor: '#DCFCE7' }]}>
                   <MessageCircle color="#22C55E" size={24} fill="#22C55E" />
@@ -308,6 +316,7 @@ export const PartnerInfoSheet = ({
                 style={[styles.actionCard, { backgroundColor: theme.surface }]}
                 onPress={handlePing}
                 disabled={pingCooldown > 0}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
                 <View style={[styles.actionIconCircle, { backgroundColor: '#FCE7F3' }]}>
                   {pingCooldown > 0 ? (
@@ -329,7 +338,7 @@ export const PartnerInfoSheet = ({
                       <Text style={[styles.pingCountText, { color: theme.primary }]}>{pingCooldown}</Text>
                     </View>
                   ) : (
-                    <Heart color={theme.primary} size={24} fill={theme.primary} />
+                    <Heart color={theme.heartPink} size={24} fill={theme.heartPink} />
                   )}
                 </View>
                 <Text style={[styles.actionTitle, { color: theme.text }]}>
@@ -349,6 +358,7 @@ export const PartnerInfoSheet = ({
                     alert('No Phone Number set for partner.');
                   }
                 }}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
                 <View style={[styles.actionIconCircle, { backgroundColor: '#E0F2FE' }]}>
                   <Phone color="#0EA5E9" size={24} fill="#0EA5E9" />
@@ -362,6 +372,7 @@ export const PartnerInfoSheet = ({
               <TouchableOpacity 
                 style={[styles.actionCard, { backgroundColor: theme.surface }]}
                 onPress={onNavigate}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
                 <View style={[styles.actionIconCircle, { backgroundColor: '#FEF3C7' }]}>
                   <Navigation2 color="#D97706" size={24} fill="#D97706" />

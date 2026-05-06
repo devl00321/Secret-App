@@ -16,9 +16,10 @@ interface SOSButtonProps {
   onCancel: () => void;
   progressAnim: Animated.Value; // Passed down from parent for sync
   isActive: boolean;
+  isSilent?: boolean;
 }
 
-export const SOSButton = ({ onTrigger, onCancel, progressAnim, isActive }: SOSButtonProps) => {
+export const SOSButton = ({ onTrigger, onCancel, progressAnim, isActive, isSilent }: SOSButtonProps) => {
   const [isPressing, setIsPressing] = useState(false);
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -53,7 +54,9 @@ export const SOSButton = ({ onTrigger, onCancel, progressAnim, isActive }: SOSBu
   const startHaptics = () => {
     let speed = 400;
     const pulse = () => {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+      if (!isSilent) {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+      }
       speed = Math.max(70, speed - 50);
       hapticTimer.current = setTimeout(pulse, speed);
     };
@@ -111,31 +114,40 @@ export const SOSButton = ({ onTrigger, onCancel, progressAnim, isActive }: SOSBu
 
   const triggerSOS = async () => {
     stopHaptics();
-    // Triple heavy impact for a solid "thuk" feeling
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    setTimeout(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy), 50);
-    setTimeout(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy), 100);
+    if (!isSilent) {
+      // Triple heavy impact for a solid "thuk" feeling
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+      setTimeout(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy), 50);
+      setTimeout(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy), 100);
+    }
     
     onTrigger();
   };
 
   if (isActive) {
     return (
-      <View style={styles.outerGlow}>
+      <View style={isSilent ? null : styles.outerGlow}>
         <TouchableOpacity 
           activeOpacity={0.9}
-          style={[styles.sosButton, styles.activeButton]}
+          style={[
+            styles.sosButton, 
+            isSilent ? styles.silentActiveButton : styles.activeButton
+          ]}
           onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            if (!isSilent) {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            }
             onCancel();
           }}
         >
           <LinearGradient
-            colors={['#FF3B30', '#FF2D55']}
+            colors={isSilent ? ['#333', '#111'] : ['#FF3B30', '#FF2D55']}
             style={styles.gradient}
           />
-          <ShieldAlert size={40} color="white" />
-          <Text style={styles.sosTextActive}>ACTIVE</Text>
+          <ShieldAlert size={40} color={isSilent ? '#FF3B30' : "white"} />
+          <Text style={[styles.sosTextActive, isSilent && { color: '#FF3B30' }]}>
+            {isSilent ? 'ACTIVATED' : 'ACTIVE'}
+          </Text>
         </TouchableOpacity>
       </View>
     );
@@ -201,6 +213,13 @@ const styles = StyleSheet.create({
     borderRadius: 85,
     borderWidth: 4,
     borderColor: 'rgba(255,255,255,0.4)',
+  },
+  silentActiveButton: {
+    width: 170,
+    height: 170,
+    borderRadius: 85,
+    borderWidth: 2,
+    borderColor: '#FF3B3040',
   },
   content: {
     alignItems: 'center',

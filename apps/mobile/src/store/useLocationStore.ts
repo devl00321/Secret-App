@@ -22,6 +22,7 @@ export interface WalkSafeState {
   durationMinutes: number;
   status: WalkSafeStatus;
   lastCheckDistance: number | null; // meters
+  path?: { latitude: number; longitude: number }[];
 }
 
 interface LocationState {
@@ -53,15 +54,22 @@ interface LocationState {
     deadline: number | null;
     status: WalkSafeStatus;
     lastCheckDistance: number | null;
+    path?: { latitude: number; longitude: number }[];
   } | null;
+  partnerLastCompletedPath: { latitude: number; longitude: number }[] | null;
+  partnerLastCompletedTime: number | null;
   activeSos: {
     isActive: boolean;
     triggeredBy: string | null;
     startTime: number | null;
     location: { latitude: number; longitude: number } | null;
+    isSilent?: boolean;
   } | null;
   isSirenMuted: boolean;
   walkSafe: WalkSafeState | null;
+  lastCompletedPath: { latitude: number; longitude: number }[] | null;
+  lastCompletedTime: number | null;
+  incomingPing: { from: string; timestamp: number; type: string } | null;
 
   // Actions
   setUserLocation: (location: Location.LocationObject | null) => void;
@@ -78,15 +86,18 @@ interface LocationState {
   setPartnerWalkSafe: (walkSafe: any) => void;
   setActiveSos: (sos: LocationState['activeSos']) => void;
   setSirenMuted: (muted: boolean) => void;
+  setSavedPlaces: (places: SavedPlace[]) => void;
   startWalkSafe: (destination: SavedPlace, durationMinutes: number) => void;
   updateWalkSafe: (update: Partial<WalkSafeState>) => void;
+  addToWalkSafePath: (lat: number, lng: number) => void;
   endWalkSafe: (status: 'arrived' | 'cancelled') => void;
   extendWalkSafe: (extraMinutes: number) => void;
+  setIncomingPing: (ping: LocationState['incomingPing']) => void;
 }
 
 export const useLocationStore = create<LocationState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       userLocation: null,
       partnerLocation: null,
       isSharing: false,
@@ -102,6 +113,11 @@ export const useLocationStore = create<LocationState>()(
       activeSos: null,
       isSirenMuted: false,
       walkSafe: null,
+      lastCompletedPath: null,
+      lastCompletedTime: null,
+      partnerLastCompletedPath: null,
+      partnerLastCompletedTime: null,
+      incomingPing: null,
 
       setUserLocation: (userLocation) => set({ userLocation }),
       setPartnerLocation: (partnerLocation) => set({ partnerLocation }),
@@ -115,6 +131,8 @@ export const useLocationStore = create<LocationState>()(
       setPartnerWalkSafe: (partnerWalkSafe) => set({ partnerWalkSafe }),
       setActiveSos: (activeSos) => set({ activeSos }),
       setSirenMuted: (isSirenMuted) => set({ isSirenMuted }),
+      setSavedPlaces: (savedPlaces) => set({ savedPlaces }),
+      setIncomingPing: (incomingPing) => set({ incomingPing }),
 
       startWalkSafe: (destination, durationMinutes) => {
         const now = Date.now();
@@ -127,6 +145,10 @@ export const useLocationStore = create<LocationState>()(
             durationMinutes,
             status: 'traveling',
             lastCheckDistance: null,
+            path: get().userLocation ? [{ 
+              latitude: get().userLocation!.coords.latitude, 
+              longitude: get().userLocation!.coords.longitude 
+            }] : []
           },
           // Also activate the generic trip for the map dashboard
           isTripActive: true,
@@ -142,11 +164,30 @@ export const useLocationStore = create<LocationState>()(
         walkSafe: state.walkSafe ? { ...state.walkSafe, ...update } : null,
       })),
 
-      endWalkSafe: (status) => set({
+      addToWalkSafePath: (lat, lng) => set((state) => {
+        if (!state.walkSafe?.isActive) return state;
+        
+        const currentPath = state.walkSafe.path || [];
+        // Only add if it's different from the last point to avoid duplicates
+        const lastPoint = currentPath[currentPath.length - 1];
+        if (lastPoint && lastPoint.latitude === lat && lastPoint.longitude === lng) return state;
+
+        const newPath = [...currentPath, { latitude: lat, longitude: lng }].slice(-100); // Cap at 100 points
+        return {
+          walkSafe: {
+            ...state.walkSafe,
+            path: newPath
+          }
+        };
+      }),
+
+      endWalkSafe: (status) => set((state) => ({
+        lastCompletedPath: status === 'arrived' ? (state.walkSafe?.path || null) : state.lastCompletedPath,
+        lastCompletedTime: status === 'arrived' ? Date.now() : state.lastCompletedTime,
         walkSafe: null,
         isTripActive: false,
         destination: null,
-      }),
+      })),
 
       extendWalkSafe: (extraMinutes) => set((state) => ({
         walkSafe: state.walkSafe ? {
@@ -187,6 +228,10 @@ export const useLocationStore = create<LocationState>()(
         sharingDuration: state.sharingDuration,
         isSharing: state.isSharing,
         walkSafe: state.walkSafe, // Persist so it survives app restart
+        lastCompletedPath: state.lastCompletedPath,
+        lastCompletedTime: state.lastCompletedTime,
+        partnerLastCompletedPath: state.partnerLastCompletedPath,
+        partnerLastCompletedTime: state.partnerLastCompletedTime,
       }),
     }
   )

@@ -1,4 +1,6 @@
 import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { 
   collection, 
   addDoc, 
@@ -10,75 +12,349 @@ import {
   limit,
   Timestamp,
   doc,
-  deleteDoc
+  deleteDoc,
+  writeBatch,
+  getDoc,
+  updateDoc
 } from 'firebase/firestore';
-import { db } from '../services/firebase';
+import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import { db, storage } from '../services/firebase';
+import { encryptionService } from '../services/encryptionService';
+import { documentDirectory, downloadAsync, getInfoAsync } from 'expo-file-system';
+import { deleteObject } from 'firebase/storage';
 
 interface Message {
   id: string;
   text: string;
+  imageUrl?: string;
+  videoUrl?: string;
+  type?: 'text' | 'image' | 'video';
   senderId: string;
   coupleId: string;
   createdAt?: Timestamp | null;
+  isRead?: boolean;
+  isDelivered?: boolean;
+  isPending?: boolean;
+  localImageUrl?: string;
+  localVideoUrl?: string;
+  storagePath?: string;
 }
 
 interface ChatState {
   messages: Message[];
+  hiddenMessageIds: string[];
+  uploadProgress: Record<string, number>;
+  uploadTasks: Record<string, any>;
   loading: boolean;
   clearMessages: () => void;
-  subscribeToMessages: (coupleId: string) => () => void;
-  sendMessage: (text: string, senderId: string, coupleId: string) => Promise<void>;
-  deleteMessage: (messageId: string) => Promise<void>;
+  subscribeToMessages: (coupleId: string, currentUserId: string) => () => void;
+  sendMessage: (text: string, senderId: string, coupleId: string, imageUrl?: string) => Promise<void>;
+  sendMedia: (uri: string, type: 'image' | 'video', senderId: string, coupleId: string) => Promise<void>;
+  cancelUpload: (messageId: string) => void;
+  deleteMessage: (messageId: string, coupleId: string) => Promise<void>;
+  deleteMessageLocally: (messageId: string) => void;
+  markMessagesAsRead: (coupleId: string, currentUserId: string) => Promise<void>;
 }
 
-export const useChatStore = create<ChatState>((set) => ({
-  messages: [],
-  loading: false,
-  clearMessages: () => set({ messages: [], loading: false }),
+export const useChatStore = create<ChatState>()(
+  persist(
+    (set, get) => ({
+      messages: [],
+      hiddenMessageIds: [],
+      uploadProgress: {},
+      uploadTasks: {},
+      loading: false,
 
-  subscribeToMessages: (coupleId) => {
-    set({ loading: true });
-    
-    const q = query(
-      collection(db, 'messages'),
-      where('coupleId', '==', coupleId),
-      orderBy('createdAt', 'asc'),
-      limit(50)
-    );
+      clearMessages: () => set({ messages: [], hiddenMessageIds: [], loading: false }),
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const messages = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as Message[];
-      
-      set({ messages, loading: false });
-    });
+      subscribeToMessages: (coupleId, currentUserId) => {
+        set({ loading: true });
+        
+        const q = query(
+          collection(db, 'couples', coupleId, 'messages'),
+          orderBy('createdAt', 'desc'),
+          limit(50)
+        );
 
-    return () => {
-      unsubscribe();
-      set({ messages: [], loading: false });
-    };
-  },
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+          set((state) => {
+            let updatedMessages = [...state.messages];
+            const { hiddenMessageIds } = state;
 
-  sendMessage: async (text, senderId, coupleId) => {
-    try {
-      await addDoc(collection(db, 'messages'), {
-        text,
-        senderId,
-        coupleId,
-        createdAt: serverTimestamp(),
-      });
-    } catch (error) {
-      console.error('Error sending message:', error);
+            snapshot.docChanges().forEach((change) => {
+              const data = change.doc.data();
+              const id = change.doc.id;
+              
+              if (change.type === 'added') {
+                // Mark as delivered if from partner (Receiving end)
+                if (data.senderId !== currentUserId && !data.isDelivered) {
+                  updateDoc(change.doc.ref, { isDelivered: true });
+                }
+
+                // Decrypt and add if not already present
+                if (!updatedMessages.find(m => m.id === id) && !hiddenMessageIds.includes(id)) {
+                  const newMessage: Message = {
+                    id,
+                    ...data,
+                    text: encryptionService.decrypt(data.text || '', coupleId),
+                  } as Message;
+                  
+                  updatedMessages.push(newMessage);
+
+                  // AUTO-DOWNLOAD MEDIA (Fire and forget in background)
+                  if (newMessage.imageUrl || newMessage.videoUrl) {
+                    const remoteUrl = newMessage.imageUrl || newMessage.videoUrl;
+                    const isVideo = !!newMessage.videoUrl;
+                    const filename = remoteUrl!.split('/').pop()?.split('?')[0] || `media-${id}`;
+                    const localUri = `${documentDirectory}${filename}`;
+                    
+                    getInfoAsync(localUri).then(async (fileInfo) => {
+                      if (!fileInfo.exists) {
+                        const { uri } = await downloadAsync(remoteUrl!, localUri);
+                        set(state => ({
+                          messages: state.messages.map(m => 
+                            m.id === id ? { ...m, localImageUrl: isVideo ? undefined : uri, localVideoUrl: isVideo ? uri : undefined } : m
+                          )
+                        }));
+                      } else {
+                        set(state => ({
+                          messages: state.messages.map(m => 
+                            m.id === id ? { ...m, localImageUrl: isVideo ? undefined : fileInfo.uri, localVideoUrl: isVideo ? fileInfo.uri : undefined } : m
+                          )
+                        }));
+                      }
+                    }).catch(err => console.error('Auto-download failed:', err));
+                  }
+                }
+              }
+
+              if (change.type === 'modified') {
+                updatedMessages = updatedMessages.map(m => 
+                  m.id === id 
+                    ? { ...m, ...data, text: encryptionService.decrypt(data.text || '', coupleId) } 
+                    : m
+                );
+
+                // PRIVACY CLEANUP TRIGGER (Sender side)
+                // If I sent it and partner read it, wait 2m then wipe from cloud
+                if (data.senderId === currentUserId && data.isRead) {
+                  const storagePath = data.storagePath;
+                  setTimeout(async () => {
+                    try {
+                      await deleteDoc(doc(db, 'couples', coupleId, 'messages', id));
+                      if (storagePath) {
+                        const storageRef = ref(storage, `chat_media/${storagePath}`);
+                        await deleteObject(storageRef);
+                      }
+                    } catch (e) {}
+                  }, 120000);
+                }
+              }
+
+              if (change.type === 'removed') {
+                const existing = updatedMessages.find(m => m.id === id);
+                // Only delete locally if it was NEVER read (true Un-send)
+                if (existing && !existing.isRead) {
+                  updatedMessages = updatedMessages.filter(m => m.id !== id);
+                }
+              }
+            });
+
+            // Cleanup any pending messages that are now in the cloud
+            const cloudIds = new Set(snapshot.docs.map(d => d.id));
+            updatedMessages = updatedMessages.filter(m => {
+              if (m.isPending && cloudIds.has(m.id)) return false; // Redundant
+              return true;
+            });
+
+            // Final sorting
+            updatedMessages.sort((a, b) => {
+              const timeA = a.createdAt?.toMillis?.() || (a as any)._localTime || Date.now();
+              const timeB = b.createdAt?.toMillis?.() || (b as any)._localTime || Date.now();
+              return timeA - timeB;
+            });
+
+            return { messages: updatedMessages, loading: false };
+          });
+        });
+        
+        return unsubscribe;
+      },
+
+      sendMedia: async (uri, type, senderId, coupleId) => {
+        const tempId = `temp-${Date.now()}`;
+        
+        // 1. Create Optimistic Local Message
+        const tempMsg: any = {
+          id: tempId,
+          text: '',
+          senderId,
+          coupleId,
+          createdAt: null,
+          _localTime: Date.now(),
+          isRead: false,
+          isDelivered: false,
+          isPending: true,
+          type,
+          imageUrl: type === 'image' ? uri : undefined,
+          videoUrl: type === 'video' ? uri : undefined,
+        };
+
+        set(state => ({ 
+          messages: [...state.messages, tempMsg],
+          uploadProgress: { ...state.uploadProgress, [tempId]: 0 }
+        }));
+
+        try {
+          // 2. Prepare Storage Reference
+          const extension = uri.split('.').pop();
+          const fileName = `${coupleId}/${Date.now()}.${extension}`;
+          const storageRef = ref(storage, `chat_media/${fileName}`);
+          
+          // Convert URI to Blob
+          const response = await fetch(uri);
+          const blob = await response.blob();
+          
+          // 3. Start Upload
+          const uploadTask = uploadBytesResumable(storageRef, blob);
+          
+          set(state => ({
+            uploadTasks: { ...state.uploadTasks, [tempId]: uploadTask }
+          }));
+
+          uploadTask.on('state_changed', 
+            (snapshot) => {
+              const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+              set(state => ({
+                uploadProgress: { ...state.uploadProgress, [tempId]: progress }
+              }));
+            }, 
+            (error) => {
+              console.error('Upload Error:', error);
+              // Handle error (e.g., remove temp message)
+              set(state => {
+                const newMsgs = state.messages.filter(m => m.id !== tempId);
+                return { messages: newMsgs };
+              });
+            }, 
+            async () => {
+              // 4. On Complete
+              const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+              
+              // Send actual Firestore message
+              await addDoc(collection(db, 'couples', coupleId, 'messages'), {
+                text: '',
+                senderId,
+                createdAt: serverTimestamp(),
+                isRead: false,
+                isDelivered: false,
+                imageUrl: type === 'image' ? downloadURL : null,
+                videoUrl: type === 'video' ? downloadURL : null,
+                storagePath: fileName,
+                type,
+              });
+
+              // Cleanup temp message and progress
+              set(state => {
+                const { [tempId]: _, ...restProgress } = state.uploadProgress;
+                const { [tempId]: __, ...restTasks } = state.uploadTasks;
+                return {
+                  messages: state.messages.filter(m => m.id !== tempId),
+                  uploadProgress: restProgress,
+                  uploadTasks: restTasks
+                };
+              });
+            }
+          );
+        } catch (err) {
+          console.error('sendMedia failed:', err);
+        }
+      },
+
+      cancelUpload: (messageId) => {
+        const task = get().uploadTasks[messageId];
+        if (task) {
+          task.cancel();
+          set(state => {
+            const { [messageId]: _, ...restTasks } = state.uploadTasks;
+            const { [messageId]: __, ...restProgress } = state.uploadProgress;
+            return {
+              messages: state.messages.filter(m => m.id !== messageId),
+              uploadTasks: restTasks,
+              uploadProgress: restProgress
+            };
+          });
+        }
+      },
+
+      sendMessage: async (text, senderId, coupleId, imageUrl) => {
+        try {
+          const encryptedText = encryptionService.encrypt(text, coupleId);
+          const messageData = {
+            text: encryptedText,
+            senderId,
+            imageUrl: imageUrl || null,
+            createdAt: serverTimestamp(),
+            isRead: false,
+            isDelivered: false,
+          };
+
+          await addDoc(collection(db, 'couples', coupleId, 'messages'), messageData);
+        } catch (error) {
+          console.error('Error sending message:', error);
+        }
+      },
+
+      deleteMessage: async (messageId: string, coupleId: string) => {
+        // Optimistic UI update
+        set((state) => ({
+          messages: state.messages.filter(m => m.id !== messageId)
+        }));
+
+        try {
+          await deleteDoc(doc(db, 'couples', coupleId, 'messages', messageId));
+        } catch (error) {
+          console.error('Error deleting message from cloud:', error);
+        }
+      },
+
+      deleteMessageLocally: (messageId) => {
+        set((state) => ({
+          messages: state.messages.filter(m => m.id !== messageId),
+          hiddenMessageIds: [...state.hiddenMessageIds, messageId]
+        }));
+      },
+
+      markMessagesAsRead: async (coupleId, currentUserId) => {
+        try {
+          const { getDocs } = await import('firebase/firestore');
+          const messagesRef = collection(db, 'couples', coupleId, 'messages');
+          const q = query(
+            messagesRef,
+            where('senderId', '!=', currentUserId),
+            where('isRead', '==', false)
+          );
+
+          const querySnapshot = await getDocs(q);
+          if (querySnapshot.empty) return;
+
+          const batch = writeBatch(db);
+          querySnapshot.docs.forEach((msgDoc) => {
+            batch.update(msgDoc.ref, { isRead: true });
+          });
+          await batch.commit();
+        } catch (error) {
+          console.error('Error marking messages as read:', error);
+        }
+      },
+    }),
+    {
+      name: 'luvv-chat-storage',
+      storage: createJSONStorage(() => AsyncStorage),
+      partialize: (state) => ({ 
+        messages: state.messages,
+        hiddenMessageIds: state.hiddenMessageIds
+      }),
     }
-  },
-
-  deleteMessage: async (messageId) => {
-    try {
-      await deleteDoc(doc(db, 'messages', messageId));
-    } catch (error) {
-      console.error('Error deleting message:', error);
-    }
-  },
-}));
+  )
+);

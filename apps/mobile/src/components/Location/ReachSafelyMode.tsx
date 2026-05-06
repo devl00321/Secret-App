@@ -142,10 +142,16 @@ export const ReachSafelyMode = ({ visible, onClose }: ReachSafelyModeProps) => {
   };
 
   const handleReachedSafely = () => {
+    const destinationName = walkSafe?.destination?.name || 'destination';
     locationService.stopWalkSafeMonitor();
     useLocationStore.getState().endWalkSafe('arrived');
     locationService.syncWalkSafe();
     locationService.syncTripStatus();
+    
+    // Log to Timeline
+    import('../../services/activityService').then(({ activityService }) => {
+      activityService.logActivity('travel', `Reached ${destinationName} safely! 🏡`);
+    });
   };
 
   const getStatusColor = () => {

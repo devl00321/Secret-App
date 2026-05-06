@@ -54,7 +54,7 @@ export const PingAnimation = ({ visible, onComplete }: { visible: boolean, onCom
           x={heart.x} 
           delay={heart.delay} 
           scale={heart.scale} 
-          color={theme.primary} 
+          color={theme.heartPink} 
         />
       ))}
     </View>

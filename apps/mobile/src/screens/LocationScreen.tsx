@@ -53,7 +53,12 @@ export const LocationScreen = () => {
     partnerWalkSafe,
     isTripActive,
     isSirenMuted,
-    setSirenMuted
+    setSirenMuted,
+    walkSafe,
+    lastCompletedPath,
+    lastCompletedTime,
+    partnerLastCompletedPath,
+    partnerLastCompletedTime
   } = useLocationStore();
 
   const [showSettings, setShowSettings] = useState(false);
@@ -68,6 +73,7 @@ export const LocationScreen = () => {
   const [selectedCoords, setSelectedCoords] = useState<{ latitude: number, longitude: number } | null>(null);
   const bannerPulse = useRef(new Animated.Value(1)).current;
   const partnerName = currentUserProfile?.partnerNickname || partner?.displayName || 'Partner';
+
 
   useEffect(() => {
     locationService.startTracking();
@@ -164,12 +170,38 @@ export const LocationScreen = () => {
           theme={theme}
           darkMapStyle={[]}
           user={user}
-          savedPlaces={savedPlaces || []}
+          savedPlaces={[
+            ...(savedPlaces || []).map(p => ({ 
+              ...p, 
+              isPartner: false, 
+              color: currentUserProfile?.gender === 'Male' ? '#6B66FF' : '#FF6B6B' 
+            })),
+            ...(partnerSavedPlaces || []).map(p => ({ 
+              ...p, 
+              isPartner: true, 
+              name: `${partnerName}'s ${p.name}`,
+              color: partner?.gender === 'Male' ? '#6B66FF' : '#FF6B6B'
+            }))
+          ]}
+          myColor={currentUserProfile?.gender === 'Male' ? '#6B66FF' : '#FF6B6B'}
+          partnerColor={partner?.gender === 'Male' ? '#6B66FF' : '#FF6B6B'}
           distanceToPartner={distanceToPartner}
           etaToPartner={etaToPartner}
           onMarkerPress={() => setShowPartnerInfo(true)}
           partnerName={partnerName}
           isSelectingLocation={isSelectingLocation}
+          walkSafePath={walkSafe?.path}
+          partnerWalkSafePath={partnerWalkSafe?.path}
+          lastCompletedPath={
+            lastCompletedPath && lastCompletedTime && (Date.now() - lastCompletedTime < 24 * 60 * 60 * 1000)
+              ? lastCompletedPath
+              : null
+          }
+          partnerLastCompletedPath={
+            partnerLastCompletedPath && partnerLastCompletedTime && (Date.now() - partnerLastCompletedTime < 24 * 60 * 60 * 1000)
+              ? partnerLastCompletedPath
+              : null
+          }
           onRegionChangeComplete={(region: any) => {
             if (isSelectingLocation) {
               setSelectedCoords({ latitude: region.latitude, longitude: region.longitude });
@@ -199,7 +231,11 @@ export const LocationScreen = () => {
                 <Text style={styles.panelTitle}>Emergency Response</Text>
               </View>
               <View style={styles.emergencyActions}>
-                <TouchableOpacity style={[styles.emergencyBtn, { backgroundColor: '#FF3B30' }]} onPress={() => Linking.openURL('tel:112')}>
+                <TouchableOpacity 
+                  style={[styles.emergencyBtn, { backgroundColor: '#FF3B30' }]} 
+                  onPress={() => Linking.openURL('tel:112')}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
                   <Phone size={20} color="white" />
                   <Text style={styles.emergencyBtnText} numberOfLines={1}>Call 112</Text>
                 </TouchableOpacity>
@@ -212,11 +248,16 @@ export const LocationScreen = () => {
                       Alert.alert('No Phone Number', 'Your partner has not set a phone number in their profile.');
                     }
                   }}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 >
                   <Phone size={20} color="white" />
                   <Text style={styles.emergencyBtnText} numberOfLines={1}>Call Partner</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.emergencyBtn, { backgroundColor: '#007AFF' }]} onPress={handleNavigate}>
+                <TouchableOpacity 
+                  style={[styles.emergencyBtn, { backgroundColor: '#007AFF' }]} 
+                  onPress={handleNavigate}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
                   <Navigation2 size={20} color="white" />
                   <Text style={styles.emergencyBtnText} numberOfLines={1}>Navigate</Text>
                 </TouchableOpacity>
@@ -227,6 +268,7 @@ export const LocationScreen = () => {
                       alertService.stopSiren();
                       setSirenMuted(true);
                     }}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                   >
                     <VolumeX size={20} color="white" />
                     <Text style={styles.emergencyBtnText} numberOfLines={1}>Mute Siren</Text>
@@ -246,6 +288,7 @@ export const LocationScreen = () => {
               <TouchableOpacity
                 style={[styles.iconButton, { backgroundColor: theme.surface }]}
                 onPress={() => setShowSettings(true)}
+                hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
               >
                 <Settings size={22} color={theme.text} />
               </TouchableOpacity>
@@ -258,6 +301,7 @@ export const LocationScreen = () => {
               <TouchableOpacity
                 style={[styles.iconButton, { backgroundColor: theme.surface }]}
                 onPress={centerOnUser}
+                hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
               >
                 <Navigation2 size={22} color={theme.text} style={{ transform: [{ rotate: '45deg' }] }} />
               </TouchableOpacity>
@@ -267,6 +311,7 @@ export const LocationScreen = () => {
               <TouchableOpacity
                 style={[styles.iconButton, { backgroundColor: theme.surface }]}
                 onPress={() => setShowReachSafely(true)}
+                hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
               >
                 <Shield size={22} color={theme.primary} />
               </TouchableOpacity>
@@ -276,8 +321,9 @@ export const LocationScreen = () => {
               <TouchableOpacity
                 style={[styles.iconButton, { backgroundColor: theme.surface }]}
                 onPress={() => setShowPartnerInfo(true)}
+                hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
               >
-                <Heart size={22} color={theme.primary} fill={theme.primary} />
+                <Heart size={22} color="#FF6B6B" fill="#FF6B6B" />
               </TouchableOpacity>
             </View>
           </View>
@@ -347,6 +393,7 @@ export const LocationScreen = () => {
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                     }
                   }}
+                  hitSlop={{ top: 15, bottom: 15, left: 10, right: 10 }}
                 >
                   <Navigation2 size={18} color="white" />
                   <Text style={styles.goText}>Go</Text>

@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { User, Calendar, Smile, ArrowRight } from 'lucide-react-native';
+import { User, Calendar, Smile, ArrowRight, Phone } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { useAuthStore } from '../../src/store/useAuthStore';
@@ -24,6 +24,7 @@ export default function SetupProfileScreen() {
   const theme = useTheme();
   const { user, setCurrentUserProfile } = useAuthStore();
   const [name, setName] = useState(user?.displayName || '');
+  const [phoneNumber, setPhoneNumber] = useState(user?.phoneNumber ? user.phoneNumber.replace('+91', '') : '');
   const [gender, setGender] = useState('');
   const [dob, setDob] = useState('');
   const [loading, setLoading] = useState(false);
@@ -31,6 +32,11 @@ export default function SetupProfileScreen() {
   const handleSave = async () => {
     if (!name.trim()) {
       Alert.alert('Required', 'Please enter your name.');
+      return;
+    }
+
+    if (phoneNumber.trim().length !== 10) {
+      Alert.alert('Required', 'Please enter a valid 10-digit phone number.');
       return;
     }
 
@@ -47,6 +53,7 @@ export default function SetupProfileScreen() {
     try {
       const updates = {
         displayName: name.trim(),
+        phoneNumber: phoneNumber.trim().startsWith('+') ? phoneNumber.trim() : `+91${phoneNumber.trim()}`,
         gender: gender.trim(),
         dob: dob.trim(),
         profileSetupComplete: true,
@@ -114,6 +121,27 @@ export default function SetupProfileScreen() {
                   onChangeText={setName}
                 />
               </View>
+            </Animated.View>
+
+            {/* Phone Number Input */}
+            <Animated.View entering={FadeInDown.delay(250)} style={styles.section}>
+              <Text style={[styles.sectionLabel, { color: theme.textLight }]}>Phone Number</Text>
+              <View style={[styles.inputGroup, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+                <Phone size={20} color={theme.textLight} style={styles.inputIcon} />
+                <View style={styles.phonePrefixContainer}>
+                  <Text style={[styles.phonePrefix, { color: theme.textLight }]}>+91</Text>
+                </View>
+                <TextInput
+                  style={[styles.input, { color: theme.text }]}
+                  placeholder="9876543210"
+                  placeholderTextColor={theme.textLight + '70'}
+                  keyboardType="phone-pad"
+                  maxLength={10}
+                  value={phoneNumber}
+                  onChangeText={(val) => setPhoneNumber(val.replace(/\D/g, '').slice(0, 10))}
+                />
+              </View>
+              <Text style={[styles.hintText, { color: theme.textLight }]}>Needed for security and pairing.</Text>
             </Animated.View>
 
             {/* Gender Selection */}
@@ -220,6 +248,16 @@ const styles = StyleSheet.create({
     shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 10, elevation: 2,
   },
   inputIcon: { marginLeft: 16, marginRight: 12 },
+  phonePrefixContainer: {
+    borderRightWidth: 1,
+    borderRightColor: 'rgba(0,0,0,0.1)',
+    marginRight: 12,
+    paddingRight: 8,
+  },
+  phonePrefix: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
   input: { flex: 1, paddingVertical: 16, fontSize: 16, fontWeight: '600' },
   hintText: { fontSize: 12, marginTop: 8, marginLeft: 16, opacity: 0.8 },
   genderGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },

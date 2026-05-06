@@ -7,11 +7,13 @@ interface HeartMarkerProps {
   type: 'me' | 'partner';
   initial?: string;
   batteryLevel?: number;
+  color?: string;
 }
 
-export const HeartMarker = React.memo(({ type, initial, batteryLevel }: HeartMarkerProps) => {
+export const HeartMarker = React.memo(({ type, initial, batteryLevel, color: overrideColor }: HeartMarkerProps) => {
   const theme = useTheme();
-  const color = type === 'me' ? theme.primary : theme.secondary;
+  const defaultColor = type === 'me' ? theme.primary : theme.secondary;
+  const color = overrideColor || defaultColor;
 
   return (
     <View style={styles.container}>

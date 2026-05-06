@@ -1,20 +1,60 @@
-import React from 'react';
-import { StyleSheet, View, Text, ScrollView, TouchableOpacity, Platform, TextInput, TouchableWithoutFeedback } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { StyleSheet, View, Text, ScrollView, TouchableOpacity, Platform, TextInput, TouchableWithoutFeedback, ImageBackground, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuthStore } from '../store/useAuthStore';
 import { Card } from '../components/Card';
-import { Heart, User, MessageCircle, Sparkles, Activity, Edit2, CalendarHeart, X } from 'lucide-react-native';
+import { Heart, User, MessageCircle, Sparkles, Activity, Edit2, CalendarHeart, X, MapPin } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import Animated, { useAnimatedStyle, useSharedValue, withSpring, FadeInUp, FadeInRight, SlideInDown } from 'react-native-reanimated';
+import { Dimensions } from 'react-native';
+import Animated, { 
+  useAnimatedStyle, 
+  useSharedValue, 
+  withSpring, 
+  FadeInUp, 
+  FadeInRight, 
+  SlideInDown, 
+  withRepeat, 
+  withTiming, 
+  Easing, 
+  interpolate,
+  useAnimatedSensor,
+  SensorType,
+  useDerivedValue
+} from 'react-native-reanimated';
 import { useTheme } from '../theme';
 import { LinearGradient } from 'expo-linear-gradient';
 import { userService } from '../services/userService';
+import { useLocationStore } from '../store/useLocationStore';
+
+const formatLastSeen = (lastActive: any) => {
+  if (!lastActive) return 'Away';
+  const date = lastActive?.toDate ? lastActive.toDate() : new Date(lastActive);
+  const now = new Date();
+  const diffInMins = Math.floor((now.getTime() - date.getTime()) / (1000 * 60));
+  if (diffInMins < 1) return 'Just now';
+  if (diffInMins < 60) return `Last seen ${diffInMins}m ago`;
+  const diffInHours = Math.floor(diffInMins / 60);
+  if (diffInHours < 24) return `Last seen ${diffInHours}h ago`;
+  const diffInDays = Math.floor(diffInHours / 24);
+  return `Last seen ${diffInDays}d ago`;
+};
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const AnimatedLinearGradient = Animated.createAnimatedComponent(LinearGradient);
 
 export const HomeScreen = () => {
   const theme = useTheme();
-  const { user, partner, currentUserProfile, setCurrentUserProfile, coupleId } = useAuthStore();
+  const { user, partner, currentUserProfile, setCurrentUserProfile, coupleId, subscribeToPartner } = useAuthStore();
+  const { isTripActive, incomingPing, setIncomingPing } = useLocationStore();
   const router = useRouter();
+
+  // Subscribe to partner presence
+  useEffect(() => {
+    if (partner?.id) {
+      return subscribeToPartner(partner.id);
+    }
+  }, [partner?.id, subscribeToPartner]);
   const scale = useSharedValue(1);
 
   const [isNicknameModalVisible, setNicknameModalVisible] = React.useState(false);
@@ -38,6 +78,66 @@ export const HomeScreen = () => {
   const handlePressOut = () => {
     scale.value = withSpring(1);
   };
+
+  const sensor = useAnimatedSensor(SensorType.ROTATION, { interval: 100 }); // Low frequency for zero heating impact
+  
+  // High damping spring to eliminate sensor jitter/noise when the phone is still
+  const smoothedRoll = useDerivedValue(() => {
+    return withSpring(sensor.sensor.value.roll, { damping: 50, stiffness: 100 });
+  });
+
+  const tiltStyle = useAnimatedStyle(() => {
+    return {
+      position: 'absolute',
+      top: -50,
+      left: -SCREEN_WIDTH * 0.5,
+      right: -SCREEN_WIDTH * 0.5,
+      bottom: -50,
+      opacity: 0.4,
+      transform: [
+        { translateX: interpolate(smoothedRoll.value, [-0.7, 0.7], [-150, 150]) },
+      ],
+    };
+  });
+
+
+  const holoStyle = useAnimatedStyle(() => {
+    return {
+      position: 'absolute',
+      top: -50,
+      left: -SCREEN_WIDTH,
+      right: -SCREEN_WIDTH,
+      bottom: -50,
+      opacity: 0.35,
+      transform: [
+        { translateX: interpolate(smoothedRoll.value, [-0.7, 0.7], [180, -180]) },
+      ],
+    };
+  });
+
+  // shimmerStyle removed
+
+  const purpleOverlayStyle = useAnimatedStyle(() => {
+    return {
+      ...StyleSheet.absoluteFillObject,
+      opacity: interpolate(smoothedRoll.value, [0.1, 0.7], [0, 1], 'clamp'),
+    };
+  });
+
+  const goldOverlayStyle = useAnimatedStyle(() => {
+    return {
+      ...StyleSheet.absoluteFillObject,
+      opacity: interpolate(smoothedRoll.value, [-0.7, -0.1], [1, 0], 'clamp'),
+    };
+  });
+
+  const pinkOverlayStyle = useAnimatedStyle(() => {
+    return {
+      ...StyleSheet.absoluteFillObject,
+      opacity: interpolate(smoothedRoll.value, [-0.6, 0, 0.6], [0, 1, 0], 'clamp'),
+    };
+  });
+
 
   const handleCardPress = () => {
     if (Platform.OS !== 'web') {
@@ -120,6 +220,35 @@ export const HomeScreen = () => {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
+      {/* Heart Burst Animation */}
+      {incomingPing && (
+        <View style={StyleSheet.absoluteFill} pointerEvents="none">
+          {[...Array(12)].map((_, i) => (
+            <AnimatedHeart key={i} delay={i * 100} theme={theme} />
+          ))}
+        </View>
+      )}
+
+      {/* Thinking of You Banner */}
+      {incomingPing && (
+        <Animated.View 
+          entering={FadeInUp.springify().damping(15)} 
+          exiting={withTiming({ opacity: 0 })}
+          style={[styles.pingBanner, { backgroundColor: theme.surface, borderColor: theme.border }]}
+        >
+          <LinearGradient
+            colors={[theme.primary + '20', 'transparent']}
+            style={StyleSheet.absoluteFill}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 0, y: 1 }}
+          />
+          <Heart size={18} color={theme.heartPink} fill={theme.heartPink} />
+          <Text style={[styles.pingText, { color: theme.text }]}>
+            <Text style={{ fontWeight: '900' }}>{partnerName}</Text> is thinking of you
+          </Text>
+        </Animated.View>
+      )}
+
       <ScrollView 
         contentContainerStyle={styles.scrollContent} 
         showsVerticalScrollIndicator={false}
@@ -158,7 +287,7 @@ export const HomeScreen = () => {
               >
                 <View style={styles.cardHeader}>
                   <View style={styles.avatarLarge}>
-                    <Heart size={32} color={theme.primary} fill={theme.primary} />
+                    <Heart size={32} color={theme.heartPink} fill={theme.heartPink} />
                     <View style={[styles.statusIndicator, { backgroundColor: partnerStatus === 'online' ? theme.success : '#AAA' }]} />
                   </View>
                   
@@ -176,8 +305,8 @@ export const HomeScreen = () => {
                       </TouchableOpacity>
                     </View>
                     <View style={styles.statusBadge}>
-                      <Text style={styles.statusText}>
-                        {partnerStatus === 'online' ? 'Active Now' : 'Away'}
+                      <Text style={[styles.statusText, { color: partner?.isOnline ? theme.success : theme.textLight }]}>
+                        {partner?.isOnline ? 'Active Now' : formatLastSeen(partner?.lastActive)}
                       </Text>
                     </View>
                   </View>
@@ -199,33 +328,130 @@ export const HomeScreen = () => {
 
         <View style={styles.spacing} />
 
+        {/* Anniversary Hero Section */}
+        <Animated.View entering={FadeInUp.delay(300)}>
+          <TouchableOpacity 
+            activeOpacity={0.9} 
+            onPress={() => {
+              setAnniversaryInput(currentUserProfile?.anniversaryDate || '');
+              setAnniversaryModalVisible(true);
+            }}
+          >
+            <View style={styles.heroCard}>
+              <View style={styles.heroBg}>
+                {/* BASE GOLD LAYER */}
+                <Animated.View style={goldOverlayStyle}>
+                  <LinearGradient
+                    colors={['#D4AF37', '#F7EF8A', '#FFD700']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={StyleSheet.absoluteFill}
+                  />
+                </Animated.View>
+
+                {/* MIDDLE PINK LAYER */}
+                <Animated.View style={pinkOverlayStyle}>
+                  <LinearGradient
+                    colors={['#FF69B4', '#FFB6C1', '#FF1493']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={StyleSheet.absoluteFill}
+                  />
+                </Animated.View>
+
+                {/* OVERLAY PURPLE LAYER */}
+                <Animated.View style={purpleOverlayStyle}>
+                  <LinearGradient
+                    colors={['#8A2BE2', '#4B0082', '#9400D3']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={StyleSheet.absoluteFill}
+                  />
+                </Animated.View>
+
+                {/* HIGH-PERFORMANCE HOLOGRAPHIC TEXTURE (CD Effect) */}
+
+                <Animated.View style={holoStyle}>
+                  <Image 
+                    source={{ uri: 'file:///Users/mdwahidkhan/.gemini/antigravity/brain/f27e7c0c-c1a3-4578-af9b-de702b82e965/holographic_cd_texture_1778057583512.png' }}
+                    style={{ width: SCREEN_WIDTH * 2, height: 400, opacity: 0.3 }}
+                    resizeMode="cover"
+                  />
+                </Animated.View>
+
+                {/* DYNAMIC TILT SHINE (Simplified) */}
+                <Animated.View style={tiltStyle}>
+                  <LinearGradient
+                    colors={['transparent', 'rgba(255,255,255,0.3)', 'transparent']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={{ flex: 1 }}
+                  />
+                </Animated.View>
+                
+                <LinearGradient
+                  colors={['transparent', 'rgba(0,0,0,0.3)']}
+                  style={styles.heroGradient}
+                />
+
+                <View style={styles.heroContent}>
+                  <View style={styles.heroHeader}>
+                    <View style={styles.milestoneBadge}>
+                      <Sparkles size={14} color="#FFF" />
+                      <Text style={styles.milestoneText}>Love Milestone</Text>
+                    </View>
+                    <CalendarHeart size={24} color="#FFF" />
+                  </View>
+                  
+                  <View style={styles.daysContainer}>
+                    <Text style={[
+                      styles.daysCount,
+                      daysTogether === '--' && { fontWeight: '300', letterSpacing: 4, opacity: 0.8 }
+                    ]}>
+                      {daysTogether}
+                    </Text>
+                    <Text style={styles.daysLabel}>Days of Love</Text>
+                  </View>
+                  
+                  <Text style={styles.heroQuote}>
+                    {currentUserProfile?.anniversaryDate 
+                      ? "Every day is a new page in our story." 
+                      : "Tap to set your anniversary and start counting your days together."}
+                  </Text>
+                </View>
+                </View>
+            </View>
+          </TouchableOpacity>
+        </Animated.View>
+
+        <View style={styles.spacing} />
+
         {/* Feature Grid */}
         <View style={styles.featureGrid}>
           <Animated.View entering={FadeInRight.delay(400)} style={styles.featureItem}>
-            <Card style={styles.insightBox}>
-              <View style={[styles.featureIcon, { backgroundColor: theme.primarySoft }]}>
-                <Sparkles size={20} color={theme.primary} />
-              </View>
-              <Text style={[styles.featureTitle, { color: theme.text }]}>Vibe Score</Text>
-              <Text style={[styles.featureValue, { color: theme.primary }]}>∞</Text>
-              <Text style={[styles.featureDesc, { color: theme.textLight }]}>Deep Connection</Text>
-            </Card>
+            <TouchableOpacity activeOpacity={0.8} onPress={() => router.push('/location')}>
+              <Card style={styles.insightBox}>
+                <View style={[styles.featureIcon, { backgroundColor: theme.primarySoft }]}>
+                  <MapPin size={20} color={theme.primary} />
+                </View>
+                <Text style={[styles.featureTitle, { color: theme.text }]}>Safe Journey</Text>
+                <Text style={[styles.featureValue, { color: theme.primary }]}>
+                   {isTripActive ? 'Live' : 'Ready'}
+                </Text>
+                <Text style={[styles.featureDesc, { color: theme.textLight }]}>Live path tracking</Text>
+              </Card>
+            </TouchableOpacity>
           </Animated.View>
 
           <Animated.View entering={FadeInRight.delay(500)} style={styles.featureItem}>
-            <TouchableOpacity activeOpacity={0.8} onPress={() => {
-              setAnniversaryInput(currentUserProfile?.anniversaryDate || '');
-              setAnniversaryModalVisible(true);
-            }}>
-              <Card style={styles.insightBox}>
-                <View style={[styles.featureIcon, { backgroundColor: '#F0F0FF' }]}>
-                  <Heart size={20} color={theme.secondary} />
-                </View>
-                <Text style={[styles.featureTitle, { color: theme.text }]}>Days Together</Text>
-                <Text style={[styles.featureValue, { color: theme.secondary }]}>{daysTogether}</Text>
-                <Text style={[styles.featureDesc, { color: theme.textLight }]}>Stronger than ever</Text>
-              </Card>
-            </TouchableOpacity>
+            <Card style={styles.insightBox}>
+              <View style={[styles.featureIcon, { backgroundColor: '#F0F0FF' }]}>
+                <Activity size={20} color={theme.secondary} />
+              </View>
+              <Text style={[styles.featureTitle, { color: theme.text }]}>Vibe Score</Text>
+              <Text style={[styles.featureValue, { color: theme.secondary }]}>∞</Text>
+              <Text style={[styles.featureDesc, { color: theme.textLight }]}>Deep Connection</Text>
+            </Card>
           </Animated.View>
         </View>
 
@@ -233,7 +459,7 @@ export const HomeScreen = () => {
           <Animated.View entering={FadeInUp.delay(550)} style={{ marginTop: 16 }}>
             <Card style={[styles.bdayCard, { backgroundColor: theme.surface }]}>
               <View style={[styles.bdayIconBox, { backgroundColor: theme.primarySoft }]}>
-                <CalendarHeart size={24} color={theme.primary} />
+                <CalendarHeart size={24} color={theme.heartPink} />
               </View>
               <View style={styles.bdayInfo}>
                 <Text style={[styles.bdayCount, { color: theme.primary }]}>
@@ -352,9 +578,84 @@ export const HomeScreen = () => {
   );
 };
 
+const AnimatedHeart = ({ delay, theme }: { delay: number, theme: any }) => {
+  const tx = useSharedValue(0);
+  const ty = useSharedValue(0);
+  const opacity = useSharedValue(0);
+  const scale = useSharedValue(0);
+  const rotate = useSharedValue(0);
+
+  useEffect(() => {
+    const angle = Math.random() * Math.PI * 2;
+    const distance = 100 + Math.random() * 200;
+    
+    tx.value = withTiming(Math.cos(angle) * distance, { duration: 2000, easing: Easing.out(Easing.quad) });
+    ty.value = withTiming(Math.sin(angle) * distance - 100, { duration: 2000, easing: Easing.out(Easing.quad) });
+    opacity.value = withSequence(
+      withDelay(delay, withTiming(1, { duration: 400 })),
+      withDelay(1000, withTiming(0, { duration: 600 }))
+    );
+    scale.value = withSequence(
+      withDelay(delay, withSpring(1 + Math.random())),
+      withDelay(1000, withTiming(0, { duration: 600 }))
+    );
+    rotate.value = withTiming(Math.random() * 360, { duration: 2000 });
+  }, []);
+
+  const style = useAnimatedStyle(() => ({
+    position: 'absolute',
+    top: '45%',
+    left: '45%',
+    opacity: opacity.value,
+    transform: [
+      { translateX: tx.value },
+      { translateY: ty.value },
+      { scale: scale.value },
+      { rotate: `${rotate.value}deg` }
+    ],
+  }));
+
+  return (
+    <Animated.View style={style}>
+      <Heart size={24} color={theme.heartPink} fill={theme.heartPink} />
+    </Animated.View>
+  );
+};
+
+const withSequence = (...animations: any[]) => {
+  'worklet';
+  return animations.reduceRight((acc, anim) => withTiming(anim.target, anim.config, () => acc), animations[animations.length - 1]);
+};
+// Re-implementing sequence manually if not available or just use nested callbacks if needed, 
+// but actually reanimated has withSequence. Let's use standard reanimated withSequence.
+import { withSequence as reSequence, withDelay } from 'react-native-reanimated';
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  pingBanner: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 60 : 40,
+    left: 24,
+    right: 24,
+    height: 50,
+    borderRadius: 25,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    zIndex: 2000,
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 5,
+  },
+  pingText: {
+    fontSize: 15,
+    marginLeft: 12,
+    fontWeight: '500',
   },
   scrollContent: {
     padding: 24,
@@ -624,5 +925,79 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 16,
     fontWeight: '800',
+  },
+  heroCard: {
+    borderRadius: 32,
+    overflow: 'hidden',
+    height: 220,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.15,
+    shadowRadius: 20,
+    elevation: 8,
+  },
+  heroBg: {
+    width: '100%',
+    height: '100%',
+  },
+  heroGradient: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  heroContent: {
+    flex: 1,
+    padding: 24,
+    justifyContent: 'space-between',
+  },
+  heroHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  milestoneBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,215,0,0.15)', // Golden tint
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,182,193,0.5)', // Rose gold border
+  },
+  milestoneText: {
+    color: 'white',
+    fontSize: 10,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginLeft: 6,
+  },
+  daysContainer: {
+    alignItems: 'center',
+  },
+  daysCount: {
+    fontSize: 72,
+    fontWeight: '900',
+    color: 'white',
+    letterSpacing: -2,
+    lineHeight: 72,
+    textShadowColor: 'rgba(255,255,255,0.4)',
+    textShadowOffset: { width: 0, height: 4 },
+    textShadowRadius: 15,
+  },
+  daysLabel: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: 'rgba(255,255,255,0.9)',
+    textTransform: 'uppercase',
+    letterSpacing: 2,
+    marginTop: 4,
+  },
+  heroQuote: {
+    fontSize: 13,
+    color: 'white',
+    textAlign: 'center',
+    fontWeight: '600',
+    fontStyle: 'italic',
+    opacity: 0.9,
   },
 });

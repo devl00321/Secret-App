@@ -196,6 +196,14 @@ export const locationService = {
           }
           useLocationStore.getState().setPartnerWalkSafe(null);
         }
+
+        // ── SYNC PARTNER BREADCRUMBS ──
+        if (data.lastCompletedPath && data.lastCompletedTime) {
+          useLocationStore.setState({
+            partnerLastCompletedPath: data.lastCompletedPath,
+            partnerLastCompletedTime: data.lastCompletedTime,
+          });
+        }
       }
     });
   },
@@ -278,22 +286,32 @@ export const locationService = {
     }
   },
 
-  subscribeToCoupleSos: (coupleId: string) => {
+  subscribeToCoupleSos: (coupleId: string, currentUserId: string) => {
     const coupleRef = doc(db, 'couples', coupleId);
     return onSnapshot(coupleRef, (snapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.data();
         const activeSos = data.activeSos || null;
-        const userId = auth.currentUser?.uid;
+        const userId = currentUserId;
         const { isSirenMuted, setSirenMuted, activeSos: prevSos } = useLocationStore.getState();
         
         useLocationStore.getState().setActiveSos(activeSos);
+
+        // Explicit suppression for Silent SOS on victim's device
+        if (activeSos?.isActive && activeSos.isSilent && activeSos.triggeredBy === userId) {
+          console.log('[LocationService] Silent SOS - Suppressing victim alert');
+          alertService.setVictimSilence(true);
+          return;
+        } else if (!activeSos?.isActive) {
+          alertService.setVictimSilence(false);
+        }
 
         // Global Alert Trigger — ONLY ON STATUS CHANGE (to avoid re-triggering siren on coords update)
         const justBecameActive = activeSos?.isActive && !prevSos?.isActive;
         
         if (justBecameActive && activeSos?.triggeredBy !== userId) {
-          // Only trigger if not muted
+          console.log('[LocationService] Partner triggered SOS. Silent:', activeSos?.isSilent);
+          // Partner always gets the alert (even if silent for the victim)
           if (!isSirenMuted) {
             alertService.triggerAlert(
               'critical',
@@ -301,16 +319,22 @@ export const locationService = {
               'Your partner needs help immediately!'
             );
           }
+        } else if (justBecameActive && activeSos?.triggeredBy === userId) {
+          console.log('[LocationService] Victim triggered SOS - UI only, no local alert.');
+          // Victim NEVER gets the siren/vibration alert, only the partner does.
+          // This ensures total sensory discretion for the victim.
+          alertService.setVictimSilence(true);
         } else if (!activeSos?.isActive && prevSos?.isActive) {
           // Stop siren when SOS is JUST cleared
           alertService.stopSiren();
+          alertService.setVictimSilence(false);
           setSirenMuted(false); // Reset for next time
         }
       }
     });
   },
 
-  triggerSos: async () => {
+  triggerSos: async (isSilent: boolean = false) => {
     const { user, coupleId } = useAuthStore.getState();
     const { userLocation, setActiveSos } = useLocationStore.getState();
     if (!user || !coupleId) return;
@@ -323,9 +347,13 @@ export const locationService = {
         latitude: userLocation.coords.latitude,
         longitude: userLocation.coords.longitude
       } : null,
+      isSilent: isSilent,
     };
 
     try {
+      if (isSilent) {
+        alertService.setVictimSilence(true);
+      }
       const coupleRef = doc(db, 'couples', coupleId);
       await updateDoc(coupleRef, { activeSos: sosData });
       setActiveSos(sosData);
@@ -350,12 +378,14 @@ export const locationService = {
         );
       }
 
-      try {
-        await notificationService.sendLocalNotification(
-          "🆘 SOS ALERT SENT",
-          "Your partner and emergency contacts have been notified."
-        );
-      } catch (e) {}
+      if (!isSilent) {
+        try {
+          await notificationService.sendLocalNotification(
+            "🆘 SOS ALERT SENT",
+            "Your partner and emergency contacts have been notified."
+          );
+        } catch (e) {}
+      }
 
     } catch (err) {
       console.error('[LocationService] SOS Trigger failed:', err);
@@ -368,6 +398,7 @@ export const locationService = {
     if (!coupleId) return;
 
     try {
+      alertService.setVictimSilence(false);
       const coupleRef = doc(db, 'couples', coupleId);
       await updateDoc(coupleRef, { activeSos: null });
       setActiveSos(null);
@@ -402,7 +433,7 @@ export const locationService = {
     console.log('[WalkSafe] Monitor started');
 
     locationService._walkSafeInterval = setInterval(() => {
-      const { walkSafe, userLocation, updateWalkSafe } = useLocationStore.getState();
+      const { walkSafe, userLocation, updateWalkSafe, addToWalkSafePath } = useLocationStore.getState();
 
       if (!walkSafe?.isActive || !walkSafe.destination || !userLocation) return;
 
@@ -515,7 +546,9 @@ export const locationService = {
       }
 
       // ── Normal update ──
+      addToWalkSafePath(userLocation.coords.latitude, userLocation.coords.longitude);
       updateWalkSafe({ lastCheckDistance: distance });
+      locationService.syncWalkSafe();
 
     }, 10000); // Check every 10 seconds
   },
@@ -546,7 +579,11 @@ export const locationService = {
           deadline: walkSafe.deadline,
           status: walkSafe.status,
           lastCheckDistance: walkSafe.lastCheckDistance,
+          lastCheckDistance: walkSafe.lastCheckDistance,
+          path: walkSafe.path || [],
         } : null,
+        lastCompletedPath: useLocationStore.getState().lastCompletedPath || null,
+        lastCompletedTime: useLocationStore.getState().lastCompletedTime || null,
       });
     } catch (err) {
       console.error('[WalkSafe] Sync failed:', err);
