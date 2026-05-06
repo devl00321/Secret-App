@@ -84,7 +84,7 @@ export const MapComponent = React.memo(({
 
   React.useEffect(() => {
     if (Platform.OS === 'android') {
-      const timer = setTimeout(() => setShouldTrack(false), 2000);
+      const timer = setTimeout(() => setShouldTrack(false), 4000);
       return () => clearTimeout(timer);
     } else {
       setShouldTrack(false);
@@ -102,6 +102,8 @@ export const MapComponent = React.memo(({
 
   const userCoords = getCoords(userLocation);
   const partnerCoords = partnerLocation ? { latitude: partnerLocation.latitude, longitude: partnerLocation.longitude } : null;
+
+  const validSavedPlaces = savedPlaces?.filter(p => p && p.latitude && p.longitude) || [];
 
   return (
     <View style={styles.flex}>
@@ -121,6 +123,22 @@ export const MapComponent = React.memo(({
           longitudeDelta: 0.05,
         }}
       >
+        {/* PASS 1: Circles (Background layer) */}
+        {validSavedPlaces.map((place) => (
+          <Circle
+            key={`circle-${place.id}`}
+            center={{
+              latitude: Number(place.latitude),
+              longitude: Number(place.longitude),
+            }}
+            radius={Number(place.radius || 200)}
+            strokeColor={(place.color || (place.isPartner ? theme.secondary : theme.primary)) + '80'}
+            fillColor={(place.color || (place.isPartner ? theme.secondary : theme.primary)) + '20'}
+            zIndex={1}
+            strokeWidth={1}
+          />
+        ))}
+
         {/* Only render markers if coordinates are valid to prevent Native Crashes */}
         {userCoords && userCoords.latitude && (
           <Marker
@@ -129,6 +147,7 @@ export const MapComponent = React.memo(({
             title="Me"
             tracksViewChanges={shouldTrack}
             anchor={{ x: 0.5, y: 0.5 }}
+            zIndex={10}
           >
             <HeartMarker type="me" initial={user?.displayName?.[0] || 'M'} color={myColor} />
           </Marker>
@@ -142,6 +161,7 @@ export const MapComponent = React.memo(({
             tracksViewChanges={shouldTrack}
             anchor={{ x: 0.5, y: 0.5 }}
             onPress={onMarkerPress}
+            zIndex={10}
           >
             <HeartMarker 
               type="partner" 
@@ -160,7 +180,7 @@ export const MapComponent = React.memo(({
             strokeWidth={5}
             lineDashPattern={[2, 12]} // Breadcrumb effect
             geodesic={true}
-            zIndex={1}
+            zIndex={2}
           />
         )}
 
@@ -172,7 +192,7 @@ export const MapComponent = React.memo(({
             strokeWidth={5}
             lineDashPattern={[2, 12]} // Breadcrumb effect
             geodesic={true}
-            zIndex={1}
+            zIndex={2}
           />
         )}
 
@@ -186,7 +206,7 @@ export const MapComponent = React.memo(({
               fillColor={myColor || theme.primary}
               strokeColor="white"
               strokeWidth={2}
-              zIndex={3}
+              zIndex={4}
             />
             {walkSafePath.length > 1 && (
               <Polyline
@@ -194,7 +214,7 @@ export const MapComponent = React.memo(({
                 strokeColor={myColor || theme.primary}
                 strokeWidth={6}
                 geodesic={true}
-                zIndex={2}
+                zIndex={3}
               />
             )}
           </>
@@ -209,7 +229,7 @@ export const MapComponent = React.memo(({
               fillColor={partnerColor || theme.secondary}
               strokeColor="white"
               strokeWidth={2}
-              zIndex={3}
+              zIndex={4}
             />
             {partnerWalkSafePath.length > 1 && (
               <Polyline
@@ -217,7 +237,7 @@ export const MapComponent = React.memo(({
                 strokeColor={partnerColor || theme.secondary}
                 strokeWidth={6}
                 geodesic={true}
-                zIndex={2}
+                zIndex={3}
               />
             )}
           </>
@@ -268,40 +288,29 @@ export const MapComponent = React.memo(({
           />
         )}
 
-        {savedPlaces?.filter(p => p && p.latitude && p.longitude).map((place) => (
-          <React.Fragment key={place.id}>
-            <Marker
-              key={`${place.id}-${shouldTrack ? 'tracking' : 'static'}`}
-              coordinate={{
-                latitude: Number(place.latitude),
-                longitude: Number(place.longitude),
-              }}
-              anchor={{ x: 0.5, y: 0.5 }}
-              tracksViewChanges={shouldTrack}
-            >
-              <View style={styles.placeMarker}>
-                <View style={[styles.placeTag, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-                  <Text style={[styles.placeText, { color: theme.text }]} numberOfLines={1}>
-                    {place.name}
-                  </Text>
-                </View>
-                <View style={[styles.placeIcon, { backgroundColor: theme.surface, borderColor: place.color || (place.isPartner ? theme.secondary : theme.primary) }]}>
-                  {getPlaceIcon(place.type, place.color || (place.isPartner ? theme.secondary : theme.primary))}
-                </View>
+        {/* PASS 2: Place Markers (Top layer) */}
+        {validSavedPlaces.map((place) => (
+          <Marker
+            key={`place-${place.id}-${shouldTrack ? 'tracking' : 'static'}`}
+            coordinate={{
+              latitude: Number(place.latitude),
+              longitude: Number(place.longitude),
+            }}
+            anchor={{ x: 0.5, y: 0.5 }}
+            tracksViewChanges={shouldTrack}
+            zIndex={20}
+          >
+            <View style={styles.placeMarker}>
+              <View style={[styles.placeTag, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+                <Text style={[styles.placeText, { color: theme.text }]} numberOfLines={1}>
+                  {place.name}
+                </Text>
               </View>
-            </Marker>
-            <Circle
-              center={{
-                latitude: Number(place.latitude),
-                longitude: Number(place.longitude),
-              }}
-              radius={Number(place.radius || 200)}
-              strokeColor={(place.color || (place.isPartner ? theme.secondary : theme.primary)) + '80'}
-              fillColor={(place.color || (place.isPartner ? theme.secondary : theme.primary)) + '20'}
-              zIndex={1}
-              strokeWidth={1}
-            />
-          </React.Fragment>
+              <View style={[styles.placeIcon, { backgroundColor: theme.surface, borderColor: place.color || (place.isPartner ? theme.secondary : theme.primary) }]}>
+                {getPlaceIcon(place.type, place.color || (place.isPartner ? theme.secondary : theme.primary))}
+              </View>
+            </View>
+          </Marker>
         ))}
       </MapView>
 

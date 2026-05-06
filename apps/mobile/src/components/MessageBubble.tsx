@@ -67,11 +67,12 @@ export const MessageBubble = ({
           end={{ x: 1, y: 1 }}
           style={[
             styles.bubble,
-            { borderBottomRightRadius: 4, borderRadius: theme.radius.lg }
+            { borderBottomRightRadius: 4, borderRadius: theme.radius.lg },
+            (imageUrl || videoUrl || localImageUrl || localVideoUrl) && { padding: 4 }
           ]}
         >
           <View style={styles.bubbleContent}>
-            {(imageUrl || videoUrl) && (
+            {(imageUrl || videoUrl || localImageUrl || localVideoUrl) && (
               <View>
                 <Image 
                   source={{ uri: localImageUrl || localVideoUrl || imageUrl || videoUrl }} 
@@ -93,14 +94,15 @@ export const MessageBubble = ({
                 )}
               </View>
             )}
-            {content ? <Text style={[styles.text, { color: '#FFFFFF' }]}>{content}</Text> : null}
+            {content ? <Text style={[styles.text, { color: '#FFFFFF', paddingHorizontal: (imageUrl || videoUrl) ? 12 : 0, paddingBottom: (imageUrl || videoUrl) ? 8 : 0 }]}>{content}</Text> : null}
           </View>
         </LinearGradient>
       ) : (
         <View style={[
           styles.bubble, 
           { backgroundColor: theme.bubblePartner, borderBottomLeftRadius: 4 },
-          { borderRadius: theme.radius.lg }
+          { borderRadius: theme.radius.lg },
+          (imageUrl || videoUrl || localImageUrl || localVideoUrl) && { padding: 4 }
         ]}>
           <View style={styles.bubbleContent}>
             {(imageUrl || videoUrl || localImageUrl || localVideoUrl) && (
@@ -110,7 +112,7 @@ export const MessageBubble = ({
                 resizeMode="cover"
               />
             )}
-            {content ? <Text style={[styles.text, { color: theme.text }]}>{content}</Text> : null}
+            {content ? <Text style={[styles.text, { color: theme.text, paddingHorizontal: (imageUrl || videoUrl) ? 12 : 0, paddingBottom: (imageUrl || videoUrl) ? 8 : 0 }]}>{content}</Text> : null}
           </View>
         </View>
       )}

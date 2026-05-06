@@ -20,7 +20,7 @@ import {
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../services/firebase';
 import { encryptionService } from '../services/encryptionService';
-import { documentDirectory, downloadAsync, getInfoAsync } from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { deleteObject } from 'firebase/storage';
 
 interface Message {
@@ -38,6 +38,7 @@ interface Message {
   localImageUrl?: string;
   localVideoUrl?: string;
   storagePath?: string;
+  localTimestamp: number;
 }
 
 interface ChatState {
@@ -93,10 +94,12 @@ export const useChatStore = create<ChatState>()(
 
                 // Decrypt and add if not already present
                 if (!updatedMessages.find(m => m.id === id) && !hiddenMessageIds.includes(id)) {
+                  const createdAtMillis = data.createdAt?.toMillis?.() || Date.now();
                   const newMessage: Message = {
                     id,
                     ...data,
                     text: encryptionService.decrypt(data.text || '', coupleId),
+                    localTimestamp: createdAtMillis,
                   } as Message;
                   
                   updatedMessages.push(newMessage);
@@ -105,12 +108,17 @@ export const useChatStore = create<ChatState>()(
                   if (newMessage.imageUrl || newMessage.videoUrl) {
                     const remoteUrl = newMessage.imageUrl || newMessage.videoUrl;
                     const isVideo = !!newMessage.videoUrl;
-                    const filename = remoteUrl!.split('/').pop()?.split('?')[0] || `media-${id}`;
-                    const localUri = `${documentDirectory}${filename}`;
+                    // Decode and flatten the filename to avoid directory structure issues on Android
+                    const urlPath = remoteUrl!.split('/o/')[1]?.split('?')[0] || '';
+                    const decodedPath = decodeURIComponent(urlPath);
+                    const extension = decodedPath.split('.').pop() || (isVideo ? 'mp4' : 'jpg');
+                    const filename = `media_${id}.${extension}`;
                     
-                    getInfoAsync(localUri).then(async (fileInfo) => {
+                    const localUri = `${(FileSystem as any).documentDirectory}${filename}`;
+                    
+                    FileSystem.getInfoAsync(localUri).then(async (fileInfo) => {
                       if (!fileInfo.exists) {
-                        const { uri } = await downloadAsync(remoteUrl!, localUri);
+                        const { uri } = await FileSystem.downloadAsync(remoteUrl!, localUri);
                         set(state => ({
                           messages: state.messages.map(m => 
                             m.id === id ? { ...m, localImageUrl: isVideo ? undefined : uri, localVideoUrl: isVideo ? uri : undefined } : m
@@ -131,7 +139,12 @@ export const useChatStore = create<ChatState>()(
               if (change.type === 'modified') {
                 updatedMessages = updatedMessages.map(m => 
                   m.id === id 
-                    ? { ...m, ...data, text: encryptionService.decrypt(data.text || '', coupleId) } 
+                    ? { 
+                        ...m, 
+                        ...data, 
+                        text: encryptionService.decrypt(data.text || '', coupleId),
+                        localTimestamp: m.localTimestamp || data.createdAt?.toMillis?.() || Date.now()
+                      } 
                     : m
                 );
 
@@ -167,12 +180,8 @@ export const useChatStore = create<ChatState>()(
               return true;
             });
 
-            // Final sorting
-            updatedMessages.sort((a, b) => {
-              const timeA = a.createdAt?.toMillis?.() || (a as any)._localTime || Date.now();
-              const timeB = b.createdAt?.toMillis?.() || (b as any)._localTime || Date.now();
-              return timeA - timeB;
-            });
+            // Final sorting using the permanent local anchor
+            updatedMessages.sort((a, b) => a.localTimestamp - b.localTimestamp);
 
             return { messages: updatedMessages, loading: false };
           });
@@ -195,6 +204,7 @@ export const useChatStore = create<ChatState>()(
           isRead: false,
           isDelivered: false,
           isPending: true,
+          localTimestamp: Date.now(),
           type,
           imageUrl: type === 'image' ? uri : undefined,
           videoUrl: type === 'video' ? uri : undefined,
