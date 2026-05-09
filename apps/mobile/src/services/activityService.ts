@@ -1,13 +1,5 @@
-import { 
-  collection, 
-  addDoc, 
-  query, 
-  orderBy, 
-  onSnapshot, 
-  Timestamp,
-  serverTimestamp 
-} from 'firebase/firestore';
-import { db } from './firebase';
+import firestore from '@react-native-firebase/firestore';
+import { db, serverTimestamp } from './firebase';
 import { useAuthStore } from '../store/useAuthStore';
 
 export type ActivityType = 'travel' | 'sos' | 'anniversary' | 'memory' | 'ping' | 'location_saved';
@@ -20,6 +12,7 @@ export interface Activity {
   userId: string;
   userName: string;
   imageUrl?: string;
+  theme?: string; // Added for themed memories
   metadata?: any;
 }
 
@@ -29,15 +22,20 @@ export const activityService = {
     if (!coupleId || !user) return;
 
     try {
-      const activitiesRef = collection(db, 'couples', coupleId, 'activities');
-      await addDoc(activitiesRef, {
+      // ── SANITIZE METADATA ──
+      // Remove undefined values which crash Firestore
+      const sanitizedMetadata = metadata ? JSON.parse(JSON.stringify(metadata, (_, v) => v === undefined ? null : v)) : null;
+
+      const activitiesRef = firestore().collection('couples').doc(coupleId).collection('activities');
+      await activitiesRef.add({
         type,
         content,
         timestamp: serverTimestamp(),
         userId: user.uid,
         userName: currentUserProfile?.displayName || 'Partner',
-        imageUrl: metadata?.imageUrl || null,
-        metadata: metadata || null,
+        imageUrl: sanitizedMetadata?.imageUrl || null,
+        theme: sanitizedMetadata?.theme || null,
+        metadata: sanitizedMetadata,
       });
     } catch (err) {
       console.error('[ActivityService] Failed to log activity:', err);
@@ -45,10 +43,11 @@ export const activityService = {
   },
 
   subscribeToActivities: (coupleId: string, callback: (activities: Activity[]) => void) => {
-    const activitiesRef = collection(db, 'couples', coupleId, 'activities');
-    const q = query(activitiesRef, orderBy('timestamp', 'desc'));
+    const activitiesRef = firestore().collection('couples').doc(coupleId).collection('activities');
+    const q = activitiesRef.orderBy('timestamp', 'desc').limit(50);
 
-    return onSnapshot(q, (snapshot) => {
+    return q.onSnapshot((snapshot) => {
+      if (!snapshot) return;
       const activities = snapshot.docs.map(doc => {
         const data = doc.data();
         return {

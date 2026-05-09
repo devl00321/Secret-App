@@ -115,6 +115,7 @@ export const MapComponent = React.memo(({
         onRegionChangeComplete={onRegionChangeComplete}
         showsUserLocation={true}
         showsMyLocationButton={false}
+        userInterfaceStyle={theme.isDark ? 'dark' : 'light'}
         customMapStyle={theme.isDark ? darkMapStyle : []}
         initialRegion={{
           latitude: partnerCoords?.latitude || userCoords?.latitude || 17.3850,

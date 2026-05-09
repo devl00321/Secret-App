@@ -22,17 +22,77 @@ import {
 } from 'lucide-react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
+import { privacyService } from '../services/privacyService';
+import { useChatStore } from '../store/chat';
+
 export const PrivacyScreen = () => {
   const theme = useTheme();
   const { isSharing, setSharing, sharingDuration, setSharingDuration } = useLocationStore();
-  const { currentUserProfile, setCurrentUserProfile } = useAuthStore();
+  const { currentUserProfile, setCurrentUserProfile, coupleId, logout } = useAuthStore();
   const { readReceiptsEnabled, setReadReceiptsEnabled } = useSettingsStore();
+  const { clearMessages } = useChatStore();
 
-  const handleToggleOnlineStatus = (value: boolean) => {
+  const handleToggleOnlineStatus = async (value: boolean) => {
     if (currentUserProfile) {
       setCurrentUserProfile({ ...currentUserProfile, isOnline: value });
-      // In a real app, you'd also sync this to Firestore immediately
+      await privacyService.updateOnlineStatus(value);
     }
+  };
+
+  const handleToggleLocationSharing = async (value: boolean) => {
+    setSharing(value);
+    await privacyService.updateLocationPrivacy(value, sharingDuration);
+  };
+
+  const handleChangeSharingDuration = async (duration: '15m' | '1h' | 'always') => {
+    setSharingDuration(duration);
+    await privacyService.updateLocationPrivacy(isSharing, duration);
+  };
+
+  const handleClearChat = () => {
+    Alert.alert(
+      'Clear All Messages?',
+      'This will permanently delete the chat history for both you and your partner. This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Clear Everything', 
+          style: 'destructive', 
+          onPress: async () => {
+            if (coupleId) {
+              const success = await privacyService.clearChatHistory(coupleId);
+              if (success) {
+                clearMessages(); // Clear local store too
+                Alert.alert('Success', 'Chat history has been cleared. 🧹');
+              }
+            }
+          } 
+        }
+      ]
+    );
+  };
+
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      '⚠️ Delete Account Permanently?',
+      'This will erase your profile, disconnect your partner, and delete all your data. This is irreversible.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Delete Permanently', 
+          style: 'destructive', 
+          onPress: async () => {
+            const success = await privacyService.deleteAccount();
+            if (success) {
+              await logout();
+              // Navigation to auth will happen automatically due to store listener
+            } else {
+              Alert.alert('Error', 'Failed to delete account. Please try logging in again first.');
+            }
+          } 
+        }
+      ]
+    );
   };
 
   const durations = [
@@ -130,7 +190,7 @@ export const PrivacyScreen = () => {
                         { backgroundColor: theme.surface, borderColor: theme.border },
                         sharingDuration === d.value && { borderColor: theme.primary, backgroundColor: theme.primarySoft }
                       ]}
-                      onPress={() => setSharingDuration(d.value as any)}
+                      onPress={() => handleChangeSharingDuration(d.value as any)}
                     >
                       <Clock size={14} color={sharingDuration === d.value ? theme.primary : theme.textLight} />
                       <Text style={[
@@ -170,20 +230,14 @@ export const PrivacyScreen = () => {
               label: 'Clear Chat History',
               desc: 'Permanently delete all messages',
               type: 'link',
-              onPress: () => Alert.alert('Confirm', 'Are you sure you want to clear all chats?', [
-                { text: 'Cancel', style: 'cancel' },
-                { text: 'Clear All', style: 'destructive' }
-              ])
+              onPress: handleClearChat
             })}
           </Card>
         </Animated.View>
 
         <TouchableOpacity 
           style={styles.deleteAccountBtn}
-          onPress={() => Alert.alert('Danger Zone', 'Deleting your account is permanent. Proceed?', [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Delete Account', style: 'destructive' }
-          ])}
+          onPress={handleDeleteAccount}
         >
           <Lock size={16} color="#F43F5E" />
           <Text style={styles.deleteAccountText}>Delete Account Permanently</Text>

@@ -1,32 +1,30 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { User, ConfirmationResult } from 'firebase/auth';
+import { FirebaseAuthTypes } from '@react-native-firebase/auth';
 import { authService } from '../services/authService';
 import { PartnerProfile } from '../services/userService';
+import { db } from '../services/firebase';
 
 interface AuthState {
-  user: User | null;
+  user: FirebaseAuthTypes.User | null;
   currentUserProfile: PartnerProfile | null;
   partner: (PartnerProfile & { lastMessage: string; lastActive?: any }) | null;
   coupleId: string | null;
   loading: boolean;
   authMethod: 'phone' | 'email' | 'google' | null;
-  confirmationResult: ConfirmationResult | null;
-  setUser: (user: User | null) => void;
+  confirmationResult: FirebaseAuthTypes.ConfirmationResult | null;
+  setUser: (user: FirebaseAuthTypes.User | null) => void;
   setCurrentUserProfile: (profile: PartnerProfile | null) => void;
   setPartner: (partner: PartnerProfile | null) => void;
   subscribeToPartner: (partnerId: string) => () => void;
   setCoupleId: (id: string | null) => void;
   setLoading: (loading: boolean) => void;
   setAuthMethod: (method: 'phone' | 'email' | 'google' | null) => void;
-  setConfirmationResult: (result: ConfirmationResult | null) => void;
+  setConfirmationResult: (result: FirebaseAuthTypes.ConfirmationResult | null) => void;
   logout: () => Promise<void>;
   isPaired: () => boolean;
 }
-
-import { doc, onSnapshot } from 'firebase/firestore';
-import { db } from '../services/firebase';
 
 export const useAuthStore = create<AuthState>()(
   persist(
@@ -52,8 +50,8 @@ export const useAuthStore = create<AuthState>()(
       subscribeToPartner: (partnerId) => {
         if (!partnerId) return () => {};
         
-        const unsubscribe = onSnapshot(doc(db, 'users', partnerId), (snapshot) => {
-          if (snapshot.exists()) {
+        const unsubscribe = db.collection('users').doc(partnerId).onSnapshot((snapshot) => {
+          if (snapshot.exists) {
             const data = snapshot.data() as PartnerProfile;
             set((state) => ({
               partner: {

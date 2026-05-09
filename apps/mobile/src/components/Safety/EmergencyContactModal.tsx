@@ -14,7 +14,6 @@ import {
 import { useTheme } from '../../theme';
 import { User, Phone, X, ShieldCheck } from 'lucide-react-native';
 import { useAuthStore } from '../../store/useAuthStore';
-import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -35,8 +34,8 @@ export const EmergencyContactModal = ({ visible, onClose }: EmergencyContactModa
     if (name.trim() && phone.trim() && user?.uid) {
       setLoading(true);
       try {
-        const userRef = doc(db, 'users', user.uid);
-        await updateDoc(userRef, {
+        const userRef = db.collection('users').doc(user.uid);
+        await userRef.update({
           emergencyContact: {
             name: name.trim(),
             phone: phone.trim(),

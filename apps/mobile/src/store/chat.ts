@@ -1,27 +1,10 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { 
-  collection, 
-  addDoc, 
-  query, 
-  where, 
-  orderBy, 
-  onSnapshot, 
-  serverTimestamp, 
-  limit,
-  Timestamp,
-  doc,
-  deleteDoc,
-  writeBatch,
-  getDoc,
-  updateDoc
-} from 'firebase/firestore';
-import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import { db, storage } from '../services/firebase';
+import firestore from '@react-native-firebase/firestore';
+import { db, serverTimestamp, storageInstance } from '../services/firebase';
 import { encryptionService } from '../services/encryptionService';
 import * as FileSystem from 'expo-file-system/legacy';
-import { deleteObject } from 'firebase/storage';
 
 interface Message {
   id: string;
@@ -31,7 +14,7 @@ interface Message {
   type?: 'text' | 'image' | 'video';
   senderId: string;
   coupleId: string;
-  createdAt?: Timestamp | null;
+  createdAt?: any;
   isRead?: boolean;
   isDelivered?: boolean;
   isPending?: boolean;
@@ -71,13 +54,13 @@ export const useChatStore = create<ChatState>()(
       subscribeToMessages: (coupleId, currentUserId) => {
         set({ loading: true });
         
-        const q = query(
-          collection(db, 'couples', coupleId, 'messages'),
-          orderBy('createdAt', 'desc'),
-          limit(50)
-        );
+        const q = db.collection('couples').doc(coupleId).collection('messages')
+          .orderBy('createdAt', 'desc')
+          .limit(50);
 
-        const unsubscribe = onSnapshot(q, (snapshot) => {
+        const unsubscribe = q.onSnapshot((snapshot) => {
+          if (!snapshot) return;
+
           set((state) => {
             let updatedMessages = [...state.messages];
             const { hiddenMessageIds } = state;
@@ -89,7 +72,7 @@ export const useChatStore = create<ChatState>()(
               if (change.type === 'added') {
                 // Mark as delivered if from partner (Receiving end)
                 if (data.senderId !== currentUserId && !data.isDelivered) {
-                  updateDoc(change.doc.ref, { isDelivered: true });
+                  change.doc.ref.update({ isDelivered: true });
                 }
 
                 // Decrypt and add if not already present
@@ -104,11 +87,10 @@ export const useChatStore = create<ChatState>()(
                   
                   updatedMessages.push(newMessage);
 
-                  // AUTO-DOWNLOAD MEDIA (Fire and forget in background)
+                  // AUTO-DOWNLOAD MEDIA
                   if (newMessage.imageUrl || newMessage.videoUrl) {
                     const remoteUrl = newMessage.imageUrl || newMessage.videoUrl;
                     const isVideo = !!newMessage.videoUrl;
-                    // Decode and flatten the filename to avoid directory structure issues on Android
                     const urlPath = remoteUrl!.split('/o/')[1]?.split('?')[0] || '';
                     const decodedPath = decodeURIComponent(urlPath);
                     const extension = decodedPath.split('.').pop() || (isVideo ? 'mp4' : 'jpg');
@@ -149,15 +131,13 @@ export const useChatStore = create<ChatState>()(
                 );
 
                 // PRIVACY CLEANUP TRIGGER (Sender side)
-                // If I sent it and partner read it, wait 2m then wipe from cloud
                 if (data.senderId === currentUserId && data.isRead) {
                   const storagePath = data.storagePath;
                   setTimeout(async () => {
                     try {
-                      await deleteDoc(doc(db, 'couples', coupleId, 'messages', id));
+                      await db.collection('couples').doc(coupleId).collection('messages').doc(id).delete();
                       if (storagePath) {
-                        const storageRef = ref(storage, `chat_media/${storagePath}`);
-                        await deleteObject(storageRef);
+                        await storageInstance.ref(`chat_media/${storagePath}`).delete();
                       }
                     } catch (e) {}
                   }, 120000);
@@ -166,21 +146,13 @@ export const useChatStore = create<ChatState>()(
 
               if (change.type === 'removed') {
                 const existing = updatedMessages.find(m => m.id === id);
-                // Only delete locally if it was NEVER read (true Un-send)
                 if (existing && !existing.isRead) {
                   updatedMessages = updatedMessages.filter(m => m.id !== id);
                 }
               }
             });
 
-            // Cleanup any pending messages that are now in the cloud
-            const cloudIds = new Set(snapshot.docs.map(d => d.id));
-            updatedMessages = updatedMessages.filter(m => {
-              if (m.isPending && cloudIds.has(m.id)) return false; // Redundant
-              return true;
-            });
-
-            // Final sorting using the permanent local anchor
+            // Final sorting
             updatedMessages.sort((a, b) => a.localTimestamp - b.localTimestamp);
 
             return { messages: updatedMessages, loading: false };
@@ -193,7 +165,6 @@ export const useChatStore = create<ChatState>()(
       sendMedia: async (uri, type, senderId, coupleId) => {
         const tempId = `temp-${Date.now()}`;
         
-        // 1. Create Optimistic Local Message
         const tempMsg: any = {
           id: tempId,
           text: '',
@@ -216,17 +187,11 @@ export const useChatStore = create<ChatState>()(
         }));
 
         try {
-          // 2. Prepare Storage Reference
           const extension = uri.split('.').pop();
           const fileName = `${coupleId}/${Date.now()}.${extension}`;
-          const storageRef = ref(storage, `chat_media/${fileName}`);
+          const storageRef = storageInstance.ref(`chat_media/${fileName}`);
           
-          // Convert URI to Blob
-          const response = await fetch(uri);
-          const blob = await response.blob();
-          
-          // 3. Start Upload
-          const uploadTask = uploadBytesResumable(storageRef, blob);
+          const uploadTask = storageRef.putFile(uri);
           
           set(state => ({
             uploadTasks: { ...state.uploadTasks, [tempId]: uploadTask }
@@ -241,18 +206,14 @@ export const useChatStore = create<ChatState>()(
             }, 
             (error) => {
               console.error('Upload Error:', error);
-              // Handle error (e.g., remove temp message)
-              set(state => {
-                const newMsgs = state.messages.filter(m => m.id !== tempId);
-                return { messages: newMsgs };
-              });
+              set(state => ({
+                messages: state.messages.filter(m => m.id !== tempId)
+              }));
             }, 
             async () => {
-              // 4. On Complete
-              const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+              const downloadURL = await storageRef.getDownloadURL();
               
-              // Send actual Firestore message
-              await addDoc(collection(db, 'couples', coupleId, 'messages'), {
+              await db.collection('couples').doc(coupleId).collection('messages').add({
                 text: '',
                 senderId,
                 createdAt: serverTimestamp(),
@@ -264,16 +225,11 @@ export const useChatStore = create<ChatState>()(
                 type,
               });
 
-              // Cleanup temp message and progress
-              set(state => {
-                const { [tempId]: _, ...restProgress } = state.uploadProgress;
-                const { [tempId]: __, ...restTasks } = state.uploadTasks;
-                return {
-                  messages: state.messages.filter(m => m.id !== tempId),
-                  uploadProgress: restProgress,
-                  uploadTasks: restTasks
-                };
-              });
+              set(state => ({
+                messages: state.messages.filter(m => m.id !== tempId),
+                uploadProgress: (({ [tempId]: _, ...rest }) => rest)(state.uploadProgress),
+                uploadTasks: (({ [tempId]: _, ...rest }) => rest)(state.uploadTasks)
+              }));
             }
           );
         } catch (err) {
@@ -284,45 +240,40 @@ export const useChatStore = create<ChatState>()(
       cancelUpload: (messageId) => {
         const task = get().uploadTasks[messageId];
         if (task) {
-          task.cancel();
-          set(state => {
-            const { [messageId]: _, ...restTasks } = state.uploadTasks;
-            const { [messageId]: __, ...restProgress } = state.uploadProgress;
-            return {
-              messages: state.messages.filter(m => m.id !== messageId),
-              uploadTasks: restTasks,
-              uploadProgress: restProgress
-            };
-          });
+          // Native SDK cancel is different if using putFile
+          // Actually it has a .pause() / .resume() / .cancel()
+          try { task.cancel(); } catch (e) {}
+          set(state => ({
+            messages: state.messages.filter(m => m.id !== messageId),
+            uploadTasks: (({ [messageId]: _, ...rest }) => rest)(state.uploadTasks),
+            uploadProgress: (({ [messageId]: _, ...rest }) => rest)(state.uploadProgress)
+          }));
         }
       },
 
       sendMessage: async (text, senderId, coupleId, imageUrl) => {
         try {
           const encryptedText = encryptionService.encrypt(text, coupleId);
-          const messageData = {
+          await db.collection('couples').doc(coupleId).collection('messages').add({
             text: encryptedText,
             senderId,
             imageUrl: imageUrl || null,
             createdAt: serverTimestamp(),
             isRead: false,
             isDelivered: false,
-          };
-
-          await addDoc(collection(db, 'couples', coupleId, 'messages'), messageData);
+          });
         } catch (error) {
           console.error('Error sending message:', error);
         }
       },
 
       deleteMessage: async (messageId: string, coupleId: string) => {
-        // Optimistic UI update
         set((state) => ({
           messages: state.messages.filter(m => m.id !== messageId)
         }));
 
         try {
-          await deleteDoc(doc(db, 'couples', coupleId, 'messages', messageId));
+          await db.collection('couples').doc(coupleId).collection('messages').doc(messageId).delete();
         } catch (error) {
           console.error('Error deleting message from cloud:', error);
         }
@@ -337,19 +288,16 @@ export const useChatStore = create<ChatState>()(
 
       markMessagesAsRead: async (coupleId, currentUserId) => {
         try {
-          const { getDocs } = await import('firebase/firestore');
-          const messagesRef = collection(db, 'couples', coupleId, 'messages');
-          const q = query(
-            messagesRef,
-            where('senderId', '!=', currentUserId),
-            where('isRead', '==', false)
-          );
+          const messagesRef = db.collection('couples').doc(coupleId).collection('messages');
+          const snapshot = await messagesRef
+            .where('senderId', '!=', currentUserId)
+            .where('isRead', '==', false)
+            .get();
 
-          const querySnapshot = await getDocs(q);
-          if (querySnapshot.empty) return;
+          if (snapshot.empty) return;
 
-          const batch = writeBatch(db);
-          querySnapshot.docs.forEach((msgDoc) => {
+          const batch = db.batch();
+          snapshot.docs.forEach((msgDoc) => {
             batch.update(msgDoc.ref, { isRead: true });
           });
           await batch.commit();

@@ -12,18 +12,20 @@ import { userService } from '../services/userService';
 import { TextInput, TouchableWithoutFeedback, StyleSheet, View, Text, ScrollView, Switch, TouchableOpacity, Platform, Alert } from 'react-native';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { biometricService } from '../services/biometricService';
+import * as Haptics from 'expo-haptics';
 
 export const ProfileScreen = () => {
   const theme = useTheme();
-  const { logout, user, currentUserProfile, setCurrentUserProfile } = useAuthStore();
-  const { biometricLockEnabled, setBiometricLockEnabled } = useSettingsStore();
+  const { logout, user, currentUserProfile, setCurrentUserProfile, setCoupleId, setPartner, setUser } = useAuthStore();
+  const { biometricLockEnabled, setBiometricLockEnabled, theme: themePreference, setTheme } = useSettingsStore();
   const router = useRouter();
   const [aiEnabled, setAiEnabled] = useState(true);
   const [locationPermissions, setLocationPermissions] = useState(true);
+  const [isAppearanceModalVisible, setAppearanceModalVisible] = useState(false);
 
   const [isEditModalVisible, setEditModalVisible] = useState(false);
   const [editName, setEditName] = useState(currentUserProfile?.displayName || user?.displayName || '');
-  const [editGender, setEditGender] = useState(currentUserProfile?.gender || '');
+  const [editGender, setEditGender] = useState<"" | "Male" | "Female">(currentUserProfile?.gender || '');
   const [editDob, setEditDob] = useState(currentUserProfile?.dob || '');
 
   const handleSaveProfile = async () => {
@@ -31,12 +33,12 @@ export const ProfileScreen = () => {
     try {
       const updates = {
         displayName: editName.trim(),
-        gender: editGender.trim(),
+        gender: editGender as "" | "Male" | "Female", // Remove .trim() which was converting to generic string
         dob: editDob.trim(),
       };
       await userService.updateUserProfile(user.uid, updates);
       if (currentUserProfile) {
-        setCurrentUserProfile({ ...currentUserProfile, ...updates });
+        setCurrentUserProfile({ ...currentUserProfile, ...updates } as any);
       }
       setEditModalVisible(false);
     } catch (e) {
@@ -62,6 +64,56 @@ export const ProfileScreen = () => {
     }
   };
 
+  const handleDeleteAccount = async () => {
+    if (!user?.uid) return;
+
+    Alert.alert(
+      "Delete Account?",
+      "This will permanently erase your profile and messages. Your partner will also be unpaired. This action cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { 
+          text: "Delete My Account", 
+          style: "destructive",
+          onPress: async () => {
+            // Second confirmation for such a destructive action
+            Alert.alert(
+              "Final Confirmation",
+              "Are you absolutely sure? Everything will be lost.",
+              [
+                { text: "No, keep it", style: "cancel" },
+                {
+                  text: "Yes, Delete Everything",
+                  style: "destructive",
+                  onPress: async () => {
+                    try {
+                      if (Platform.OS !== 'web') {
+                        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+                      }
+                      await userService.deleteUserAccount(user.uid, currentUserProfile?.partnerId || null);
+                      // Clear store and redirect
+                      setCoupleId(null);
+                      setPartner(null);
+                      setCurrentUserProfile(null);
+                      setUser(null);
+                      router.replace('/(auth)');
+                    } catch (e: any) {
+                      if (e.code === 'auth/requires-recent-login') {
+                        Alert.alert("Security Check", "Please log out and log back in before deleting your account for security reasons.");
+                      } else {
+                        Alert.alert("Error", "Failed to delete account. Please try again later.");
+                      }
+                    }
+                  }
+                }
+              ]
+            );
+          }
+        }
+      ]
+    );
+  };
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
       <Header title="Settings" showBack />
@@ -69,7 +121,12 @@ export const ProfileScreen = () => {
         
         <Animated.View entering={FadeInUp.duration(600)} style={styles.profileHeader}>
           <View style={[styles.avatarLarge, { backgroundColor: theme.primarySoft, borderColor: theme.surface }]}>
-            <User size={50} color={theme.primary} />
+            {/* Initials-based avatar — feels personal and premium */}
+            <View style={[styles.initialsCircle, { backgroundColor: theme.primary }]}>
+              <Text style={styles.initialsText}>
+                {(currentUserProfile?.displayName || user?.displayName || 'U').charAt(0).toUpperCase()}
+              </Text>
+            </View>
             <TouchableOpacity 
               style={[styles.editAvatarBtn, { backgroundColor: theme.surface, borderColor: theme.border }]}
               onPress={() => {
@@ -155,10 +212,13 @@ export const ProfileScreen = () => {
             <Lock size={20} color={theme.textLight} />
             <Text style={[styles.accountLabel, { color: theme.text }]}>Privacy Settings</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.accountItem, styles.noBorder]}>
+          <TouchableOpacity 
+            style={[styles.accountItem, styles.noBorder]}
+            onPress={() => setAppearanceModalVisible(true)}
+          >
             <Palette size={20} color={theme.textLight} />
             <Text style={[styles.accountLabel, { color: theme.text }]}>Appearance</Text>
-            <Text style={[styles.accountValue, { color: theme.primary }]}>System</Text>
+            <Text style={[styles.accountValue, { color: theme.primary }]}>{themePreference}</Text>
           </TouchableOpacity>
         </Card>
 
@@ -169,6 +229,17 @@ export const ProfileScreen = () => {
           style={styles.logoutButton}
           textStyle={{ color: '#FF4747', fontWeight: '800' }}
         />
+
+        <Text style={[styles.sectionTitle, { color: '#FF4747', marginTop: 24 }]}>Danger Zone</Text>
+        <Card style={[styles.settingsCard, { borderColor: 'rgba(255, 71, 71, 0.2)', borderWidth: 1 }]}>
+          <TouchableOpacity 
+            style={[styles.accountItem, styles.noBorder]}
+            onPress={handleDeleteAccount}
+          >
+            <X size={20} color="#FF4747" />
+            <Text style={[styles.accountLabel, { color: '#FF4747' }]}>Delete Account Permanently</Text>
+          </TouchableOpacity>
+        </Card>
         
         <Text style={styles.versionText}>LUVV Premium • v1.2.0</Text>
       </ScrollView>
@@ -200,13 +271,26 @@ export const ProfileScreen = () => {
 
             <View style={[styles.modalInputWrapper, { backgroundColor: theme.surface, borderColor: theme.border }]}>
               <Text style={[styles.inputLabel, { color: theme.textLight }]}>Gender</Text>
-              <TextInput
-                style={[styles.modalInput, { color: theme.text }]}
-                value={editGender}
-                onChangeText={setEditGender}
-                placeholder="Gender"
-                placeholderTextColor={theme.textLight}
-              />
+              {/* Toggle buttons — prevents silent theme bug from free-text typos */}
+              <View style={styles.genderToggleRow}>
+                {(['Male', 'Female'] as const).map((g) => (
+                  <TouchableOpacity
+                    key={g}
+                    style={[
+                      styles.genderBtn,
+                      editGender === g && { backgroundColor: theme.primary, borderColor: theme.primary }
+                    ]}
+                    onPress={() => setEditGender(g)}
+                  >
+                    <Text style={[
+                      styles.genderBtnText,
+                      { color: editGender === g ? 'white' : theme.textLight }
+                    ]}>
+                      {g === 'Male' ? '👨 Male' : '👩 Female'}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
             </View>
 
             <View style={[styles.modalInputWrapper, { backgroundColor: theme.surface, borderColor: theme.border }]}>
@@ -239,6 +323,54 @@ export const ProfileScreen = () => {
           </View>
         </Animated.View>
       )}
+
+      {/* Appearance Modal */}
+      {isAppearanceModalVisible && (
+        <Animated.View entering={FadeInUp.duration(200)} style={styles.modalOverlay}>
+          <TouchableWithoutFeedback onPress={() => setAppearanceModalVisible(false)}>
+            <View style={StyleSheet.absoluteFillObject} />
+          </TouchableWithoutFeedback>
+          <View style={[styles.modalContent, { backgroundColor: theme.background, borderColor: theme.border }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: theme.text }]}>Appearance</Text>
+              <TouchableOpacity onPress={() => setAppearanceModalVisible(false)}>
+                <X size={24} color={theme.textLight} />
+              </TouchableOpacity>
+            </View>
+            
+            <View style={styles.themeOptionsRow}>
+              {(['light', 'dark', 'system'] as const).map((t) => (
+                <TouchableOpacity
+                  key={t}
+                  style={[
+                    styles.themeOptionBtn,
+                    { backgroundColor: theme.surface, borderColor: themePreference === t ? theme.primary : theme.border }
+                  ]}
+                  onPress={() => {
+                    if (Platform.OS !== 'web') {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    }
+                    setTheme(t);
+                    setAppearanceModalVisible(false);
+                  }}
+                >
+                  <Text style={[
+                    styles.themeOptionText,
+                    { color: themePreference === t ? theme.primary : theme.textLight }
+                  ]}>
+                    {t === 'light' ? '☀️ Light' : t === 'dark' ? '🌙 Dark' : '🌗 System'}
+                  </Text>
+                  {themePreference === t && (
+                    <View style={[styles.checkCircle, { backgroundColor: theme.primary }]}>
+                      <Text style={{ color: 'white', fontSize: 10 }}>✓</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        </Animated.View>
+      )}
     </SafeAreaView>
   );
 };
@@ -268,6 +400,38 @@ const styles = StyleSheet.create({
     shadowRadius: 20,
     elevation: 8,
     transform: [{ rotate: '5deg' }],
+  },
+  initialsCircle: {
+    width: 70,
+    height: 70,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  initialsText: {
+    fontSize: 36,
+    fontWeight: '900',
+    color: 'white',
+    letterSpacing: -1,
+  },
+  genderToggleRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  genderBtn: {
+    flex: 1,
+    height: 44,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: '#DDD',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  genderBtnText: {
+    fontSize: 15,
+    fontWeight: '700',
   },
   editAvatarBtn: {
     position: 'absolute',
@@ -428,5 +592,28 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 16,
     fontWeight: '800',
+  },
+  themeOptionsRow: {
+    gap: 12,
+    marginTop: 8,
+  },
+  themeOptionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 18,
+    borderRadius: 16,
+    borderWidth: 1.5,
+  },
+  themeOptionText: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  checkCircle: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

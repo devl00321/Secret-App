@@ -121,16 +121,6 @@ export default function AuthChoiceScreen() {
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={styles.secondaryButton}
-              onPress={handleGooglePress}
-              disabled={!request || !isGoogleAuthConfigured}
-              activeOpacity={0.8}
-            >
-              <Globe size={22} color="white" style={styles.icon} />
-              <Text style={styles.secondaryButtonText}>Google Account</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
               style={styles.ghostButton}
               onPress={() => handlePress('/(auth)/email', 'email')}
               activeOpacity={0.7}

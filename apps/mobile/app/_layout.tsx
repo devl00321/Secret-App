@@ -2,22 +2,23 @@ import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState, useCallback } from 'react';
-import { AppState, LogBox } from 'react-native';
+import { AppState, LogBox, useColorScheme } from 'react-native';
 import * as SplashScreen from 'expo-splash-screen';
+import { SplashTransition } from '../src/components/SplashTransition';
 
 // Ignore specific warnings from third-party libraries
 LogBox.ignoreLogs([
   'SafeAreaView has been deprecated',
   'No native ExpoFirebaseCore module found',
   'Failed to initialize reCAPTCHA',
+  'This method is deprecated (as well as all React Native Firebase namespaced API)',
 ]);
 import 'react-native-reanimated';
-import { onAuthStateChanged } from 'firebase/auth';
-import { doc, onSnapshot } from 'firebase/firestore';
-
-import { useColorScheme } from '@/hooks/use-color-scheme';
+import { auth, serverTimestamp } from '../src/services/firebase';
+import { onAuthStateChanged } from '@react-native-firebase/auth';
+import firestore from '@react-native-firebase/firestore';
+import appCheck from '@react-native-firebase/app-check';
 import { useAuthStore } from '../src/store/useAuthStore';
-import { auth, db } from '../src/services/firebase';
 import { userService } from '../src/services/userService';
 import { locationService } from '../src/services/locationService';
 
@@ -26,6 +27,28 @@ SplashScreen.preventAutoHideAsync().catch(() => {
   /* reloading the app might cause this to error, so we catch it */
 });
 
+// Initialize Firebase App Check for production security
+try {
+  const rnfbProvider = appCheck().newReactNativeFirebaseAppCheckProvider();
+  rnfbProvider.configure({
+    android: {
+      provider: __DEV__ ? 'debug' : 'playIntegrity',
+      // Get this token from Firebase Console → App Check → Manage debug tokens
+      debugToken: process.env.EXPO_PUBLIC_APP_CHECK_DEBUG_TOKEN || undefined,
+    },
+    apple: {
+      provider: __DEV__ ? 'debug' : 'appAttestWithDeviceCheckFallback',
+    },
+    web: {
+      provider: 'reCaptchaV3',
+      siteKey: 'unknown'
+    }
+  });
+  appCheck().initializeAppCheck({ provider: rnfbProvider, isTokenAutoRefreshEnabled: true });
+} catch (e) {
+  console.warn('App Check initialization failed:', e);
+}
+
 export default function RootLayout() {
   const colorScheme = useColorScheme();
   const segments = useSegments();
@@ -33,6 +56,7 @@ export default function RootLayout() {
   
   // Local state to track if we've completed the initial auth & data load
   const [isReady, setIsReady] = useState(false);
+  const [showSplash, setShowSplash] = useState(true);
   
   const { 
     user, 
@@ -49,7 +73,7 @@ export default function RootLayout() {
   useEffect(() => {
     let userUnsubscribe: () => void = () => {};
 
-    const authUnsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+    const authUnsubscribe = onAuthStateChanged(auth(), async (firebaseUser) => {
       // Always set the user state immediately to reflect current auth status
       setUser(firebaseUser);
       
@@ -68,7 +92,7 @@ export default function RootLayout() {
         await userService.createUserIfNotExists(firebaseUser);
         
         // Listen for real-time user document changes
-        userUnsubscribe = onSnapshot(doc(db, 'users', firebaseUser.uid), async (snapshot) => {
+        userUnsubscribe = firestore().collection('users').doc(firebaseUser.uid).onSnapshot(async (snapshot) => {
           if (snapshot.exists()) {
             const data = snapshot.data();
             
@@ -76,20 +100,20 @@ export default function RootLayout() {
             const currentStoreProfile = useAuthStore.getState().currentUserProfile;
             const mergedProfile = {
               ...data,
-              anniversaryDate: currentStoreProfile?.anniversaryDate || data.anniversaryDate
+              anniversaryDate: currentStoreProfile?.anniversaryDate || data?.anniversaryDate
             } as import('../src/services/userService').PartnerProfile;
 
             setCurrentUserProfile(mergedProfile);
-            setCoupleId(data.coupleId || null);
+            setCoupleId(data?.coupleId || null);
             
             // Sync saved places from Firestore to LocationStore
-            if (data.savedPlaces) {
+            if (data?.savedPlaces) {
               import('../src/store/useLocationStore').then(({ useLocationStore }) => {
                 useLocationStore.getState().setSavedPlaces(data.savedPlaces);
               });
             }
 
-            if (data.partnerId) {
+            if (data?.partnerId) {
               const partnerData = await userService.getUserData(data.partnerId);
               setPartner(partnerData);
             } else {
@@ -126,7 +150,7 @@ export default function RootLayout() {
     }, 500);
 
     const sosUnsubscribe = locationService.subscribeToCoupleSos(coupleId, user.uid);
-    const pingUnsubscribe = locationService.subscribeToIncomingPings(coupleId, (ping) => {
+    const pingUnsubscribe = locationService.subscribeToIncomingPings(user.uid, (ping) => {
       // Global ping handling
       import('../src/services/alertService').then(({ alertService }) => {
         alertService.triggerHeartbeatHaptics();
@@ -144,12 +168,10 @@ export default function RootLayout() {
     const updatePresence = async () => {
       if (!user?.uid) return;
       try {
-        const { doc, updateDoc, serverTimestamp } = await import('firebase/firestore');
-        const { db } = await import('../src/services/firebase');
-        await updateDoc(doc(db, 'users', user.uid), {
+        await firestore().collection('users').doc(user.uid).set({
           isOnline: true,
           lastActive: serverTimestamp()
-        });
+        }, { merge: true });
       } catch (e) {}
     };
     updatePresence();
@@ -175,19 +197,24 @@ export default function RootLayout() {
   useEffect(() => {
     if (!coupleId) return;
 
-    const unsubscribe = onSnapshot(doc(db, 'couples', coupleId), (snapshot) => {
-      if (snapshot.exists()) {
-        const data = snapshot.data();
-        if (data.anniversaryDate) {
-          // Sync to store immediately so components can use it
-          useAuthStore.setState(state => ({
-            currentUserProfile: state.currentUserProfile 
-              ? { ...state.currentUserProfile, anniversaryDate: data.anniversaryDate }
-              : null
-          }));
+    const unsubscribe = firestore().collection('couples').doc(coupleId).onSnapshot(
+      (snapshot) => {
+        if (snapshot && snapshot.exists()) {
+          const data = snapshot.data();
+          if (data && data.anniversaryDate) {
+            // Sync to store immediately so components can use it
+            useAuthStore.setState(state => ({
+              currentUserProfile: state.currentUserProfile 
+                ? { ...state.currentUserProfile, anniversaryDate: data.anniversaryDate }
+                : null
+            }));
+          }
         }
+      },
+      (error) => {
+        console.error('Couple data listener error:', error);
       }
-    });
+    );
 
     return () => unsubscribe();
   }, [coupleId]);
@@ -240,9 +267,11 @@ export default function RootLayout() {
     };
   }, [user?.uid]);
 
-  // 4. Hide Splash Screen when ready
+  // 4. Hide native splash screen when ready, then let our animated splash take over
   useEffect(() => {
     if (isReady) {
+      // Hide the static native splash immediately
+      // Our SplashTransition component takes over with the animation
       SplashScreen.hideAsync().catch(() => {});
     }
   }, [isReady]);
@@ -258,6 +287,10 @@ export default function RootLayout() {
         <Stack.Screen name="(app)" options={{ animation: 'fade' }} />
       </Stack>
       <StatusBar style="auto" />
+      {/* YouTube-style splash: renders on top of everything, animates out once ready */}
+      {showSplash && (
+        <SplashTransition onAnimationComplete={() => setShowSplash(false)} />
+      )}
     </ThemeProvider>
   );
 }

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, Switch, ScrollView, Animated, Platform } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, Switch, ScrollView, Animated, Platform, Linking, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Header } from '../components/Header';
 import { Card } from '../components/Card';
@@ -294,7 +294,17 @@ export const SafetyScreen = () => {
           <View style={styles.emergencyContacts}>
             <Animated.Text style={[styles.sectionTitle, { color: textColor, marginBottom: 20 }]}>Quick Actions</Animated.Text>
             
-            <TouchableOpacity style={[styles.actionItem, { backgroundColor: activeSos?.isActive ? 'rgba(255,255,255,0.08)' : theme.surface }]}>
+            <TouchableOpacity 
+              style={[styles.actionItem, { backgroundColor: activeSos?.isActive ? 'rgba(255,255,255,0.08)' : theme.surface }]}
+              onPress={() => {
+                const partner = useAuthStore.getState().partner;
+                if (partner?.phoneNumber) {
+                  Linking.openURL(`tel:${partner.phoneNumber}`);
+                } else {
+                  Alert.alert('No Phone Number', 'Your partner has not set a phone number in their profile.');
+                }
+              }}
+            >
               <Phone size={22} color={activeSos?.isActive ? 'white' : theme.text} />
               <Animated.Text style={[styles.actionText, { color: textColor }]}>Call Partner</Animated.Text>
             </TouchableOpacity>

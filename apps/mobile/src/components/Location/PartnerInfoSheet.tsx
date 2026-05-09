@@ -11,7 +11,8 @@ import {
   ActivityIndicator,
   PanResponder,
   Modal,
-  Linking
+  Linking,
+  Alert
 } from 'react-native';
 import { Image } from 'expo-image';
 import { 
@@ -355,7 +356,7 @@ export const PartnerInfoSheet = ({
                   if (partner?.phoneNumber) {
                     Linking.openURL(`tel:${partner.phoneNumber}`);
                   } else {
-                    alert('No Phone Number set for partner.');
+                    Alert.alert('No Phone Number', 'Your partner has not set a phone number in their profile.');
                   }
                 }}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}

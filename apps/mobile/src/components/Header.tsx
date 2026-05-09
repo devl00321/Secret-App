@@ -35,17 +35,24 @@ export const Header = ({ title, showBack = false, rightElement, transparent = fa
       ]}
     >
       <View style={styles.content}>
+        <Text 
+          style={[styles.title, { color: textColor ?? theme.text, marginHorizontal: 60 }]}
+          numberOfLines={1}
+        >
+          {title}
+        </Text>
+        
+        <View style={styles.rightSlot}>{rightElement ?? (showBack ? <View style={styles.placeholder} /> : null)}</View>
+
         {showBack && (
           <TouchableOpacity 
             style={styles.backButton} 
             onPress={() => router.back()}
-            hitSlop={{ top: 15, bottom: 15, left: 20, right: 20 }}
+            hitSlop={{ top: 25, bottom: 25, left: 40, right: 30 }}
           >
             <ArrowLeft size={24} color={textColor ?? theme.text} />
           </TouchableOpacity>
         )}
-        <Text style={[styles.title, { color: textColor ?? theme.text }]}>{title}</Text>
-        <View style={styles.rightSlot}>{rightElement ?? (showBack ? <View style={styles.placeholder} /> : null)}</View>
       </View>
     </Container>
   );
@@ -68,6 +75,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 20,
     padding: 8,
+    zIndex: 100,
   },
   title: {
     fontSize: 18,

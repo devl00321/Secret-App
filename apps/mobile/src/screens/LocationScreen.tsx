@@ -27,11 +27,16 @@ import { LocationSettingsModal } from '../components/Location/LocationSettingsMo
 import { SavedPlacesModal } from '../components/Location/SavedPlacesModal';
 import { PartnerInfoSheet } from '../components/Location/PartnerInfoSheet';
 import { ReachSafelyMode } from '../components/Location/ReachSafelyMode';
-import { PingAnimation } from '../components/Location/PingAnimation'; // Forced refresh 💓
+import { PingAnimation } from '../components/Location/PingAnimation';
 import { AddPlaceModal } from '../components/Location/AddPlaceModal';
 import * as Haptics from 'expo-haptics';
+import { GooglePlacesAutocomplete } from 'react-native-google-places-autocomplete';
+import { darkMapStyle } from '../theme/darkMapStyle';
 
-const GOOGLE_MAPS_APIKEY = 'YOUR_GOOGLE_MAPS_API_KEY_HERE';
+const GOOGLE_MAPS_APIKEY = Platform.select({
+  ios: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_IOS,
+  android: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_ANDROID,
+}) || '';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export const LocationScreen = () => {
@@ -58,7 +63,8 @@ export const LocationScreen = () => {
     lastCompletedPath,
     lastCompletedTime,
     partnerLastCompletedPath,
-    partnerLastCompletedTime
+    partnerLastCompletedTime,
+    incomingPing // Added
   } = useLocationStore();
 
   const [showSettings, setShowSettings] = useState(false);
@@ -74,12 +80,10 @@ export const LocationScreen = () => {
   const bannerPulse = useRef(new Animated.Value(1)).current;
   const partnerName = currentUserProfile?.partnerNickname || partner?.displayName || 'Partner';
 
-
   useEffect(() => {
     locationService.startTracking();
-    locationService.syncSavedPlaces(); // Sync local places to cloud on entry
+    locationService.syncSavedPlaces(); 
 
-    // Auto-center on partner after a short delay once mounted
     const timer = setTimeout(() => {
       if (partnerLocation) {
         zoomToPartner();
@@ -93,6 +97,14 @@ export const LocationScreen = () => {
   }, [coupleId, partner?.id]);
 
   useEffect(() => {
+    if (incomingPing) {
+      console.log('💓 Heartbeat visual triggered!');
+      setShowPingAnim(false);
+      setTimeout(() => setShowPingAnim(true), 50);
+    }
+  }, [incomingPing]);
+
+  useEffect(() => {
     if (activeSos?.isActive && activeSos.triggeredBy !== user?.uid) {
       zoomToPartner();
       startBannerPulse();
@@ -100,11 +112,6 @@ export const LocationScreen = () => {
       bannerPulse.setValue(1);
     }
   }, [activeSos?.isActive]);
-
-  // REDUNDANT: Handled globally in locationService.ts
-  /*
-  useEffect(() => { ... })
-  */
 
   const startBannerPulse = () => {
     Animated.loop(
@@ -168,7 +175,7 @@ export const LocationScreen = () => {
           onMapReady={() => {}}
           updateMetrics={updateMetrics}
           theme={theme}
-          darkMapStyle={[]}
+          darkMapStyle={darkMapStyle}
           user={user}
           savedPlaces={[
             ...(savedPlaces || []).map(p => ({ 
@@ -425,6 +432,80 @@ export const LocationScreen = () => {
       {/* CONFIRM LOCATION OVERLAY */}
       {isSelectingLocation && (
         <SafeAreaView style={styles.confirmContainer} pointerEvents="box-none">
+          <View style={styles.searchOverlay}>
+            <GooglePlacesAutocomplete
+              placeholder="Search for a place..."
+              onPress={(data, details = null) => {
+                if (details && mapRef.current) {
+                  const { lat, lng } = details.geometry.location;
+                  mapRef.current.animateToRegion({
+                    latitude: lat,
+                    longitude: lng,
+                    latitudeDelta: 0.005,
+                    longitudeDelta: 0.005,
+                  }, 1000);
+                  setSelectedCoords({ latitude: lat, longitude: lng });
+                }
+              }}
+              fetchDetails={true}
+              renderRightButton={() => (
+                <TouchableOpacity 
+                  style={[styles.searchBtn, { backgroundColor: theme.primary }]}
+                  onPress={() => {
+                    // Logic to trigger search if needed, but Autocomplete handles it
+                    // This button is mostly for visual cue / explicit confirmation
+                  }}
+                >
+                  <Search size={18} color="white" />
+                </TouchableOpacity>
+              )}
+              query={{
+                key: GOOGLE_MAPS_APIKEY,
+                language: 'en',
+                types: 'geocode', // Better for finding addresses/cities
+              }}
+              styles={{
+                container: { flex: 0, width: '100%' },
+                textInputContainer: {
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                },
+                textInput: {
+                  height: 50,
+                  backgroundColor: theme.surface,
+                  borderRadius: 15,
+                  paddingHorizontal: 15,
+                  fontSize: 16,
+                  color: theme.text,
+                  flex: 1,
+                  ...theme.shadows.soft,
+                },
+                listView: {
+                  backgroundColor: theme.surface,
+                  borderRadius: 15,
+                  marginTop: 5,
+                  ...theme.shadows.medium,
+                  zIndex: 1000,
+                },
+                row: {
+                  padding: 13,
+                  height: 48,
+                  flexDirection: 'row',
+                },
+                separator: {
+                  height: 1,
+                  backgroundColor: theme.border,
+                },
+                description: {
+                  color: theme.text,
+                },
+              }}
+              enablePoweredByContainer={false}
+              nearbyPlacesAPI="GooglePlacesSearch"
+              debounce={400}
+            />
+          </View>
+
           <View style={[styles.confirmCard, { backgroundColor: theme.surface }]}>
             <Text style={[styles.confirmTitle, { color: theme.text }]}>Move map to pick location</Text>
             <View style={styles.confirmActions}>
@@ -473,7 +554,11 @@ export const LocationScreen = () => {
         onNavigate={handleNavigate}
         onChat={() => {
           setShowPartnerInfo(false);
-          router.push('/(app)/chat' as any);
+          if (coupleId) {
+            router.push(`/(app)/chat/${coupleId}` as any);
+          } else {
+            Alert.alert('Not Paired', 'You need to be paired with a partner to open the chat.');
+          }
         }}
         onLocate={zoomToPartner}
         onPing={handlePing}
@@ -590,8 +675,25 @@ const styles = StyleSheet.create({
     elevation: 2
   },
   emergencyBtnText: { color: 'white', fontWeight: '900', fontSize: 12, marginTop: 4, textAlign: 'center' },
-  confirmContainer: { position: 'absolute', bottom: 120, left: 0, right: 0, alignItems: 'center', pointerEvents: 'box-none' },
-  confirmCard: { width: SCREEN_WIDTH * 0.88, padding: 20, borderRadius: 24, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 15, elevation: 10 },
+  confirmContainer: { position: 'absolute', top: 60, bottom: 0, left: 0, right: 0, alignItems: 'center', pointerEvents: 'box-none' },
+  searchOverlay: {
+    width: SCREEN_WIDTH * 0.88,
+    zIndex: 2000,
+    marginBottom: 20,
+  },
+  searchBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    marginLeft: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 5,
+    elevation: 3,
+  },
+  confirmCard: { position: 'absolute', bottom: 120, width: SCREEN_WIDTH * 0.88, padding: 20, borderRadius: 24, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 15, elevation: 10 },
   confirmTitle: { fontSize: 14, fontWeight: '700', textAlign: 'center', marginBottom: 15 },
   confirmActions: { flexDirection: 'row', justifyContent: 'space-between', gap: 12 },
   confirmBtn: { flex: 1, height: 48, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
