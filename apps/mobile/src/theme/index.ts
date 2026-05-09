@@ -1,5 +1,6 @@
 import { useColorScheme } from 'react-native';
 import { useAuthStore } from '../store/useAuthStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 
 export const COLORS = {
   light: {
@@ -61,8 +62,12 @@ export const COLORS = {
 export const useTheme = () => {
   const colorScheme = useColorScheme();
   const { currentUserProfile } = useAuthStore();
+  const { theme: themePreference } = useSettingsStore();
   
-  let baseTheme = colorScheme === 'dark' ? { ...COLORS.dark } : { ...COLORS.light };
+  // Decide which mode to use: manual preference OR system fallback
+  const mode = themePreference === 'system' ? colorScheme : themePreference;
+  
+  let baseTheme = mode === 'dark' ? { ...COLORS.dark } : { ...COLORS.light };
 
   // ── ANNIVERSARY THEME DETECTION ──
   if (currentUserProfile?.anniversaryDate) {
@@ -93,10 +98,10 @@ export const useTheme = () => {
 
   return {
     ...baseTheme,
-    isDark: colorScheme === 'dark',
+    isDark: mode === 'dark',
     spacing: SPACING,
     radius: RADIUS,
-    shadows: colorScheme === 'dark' ? DARK_SHADOWS : SHADOWS,
+    shadows: mode === 'dark' ? DARK_SHADOWS : SHADOWS,
   };
 };
 

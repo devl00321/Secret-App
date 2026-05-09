@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Pressable, Image, Modal, TouchableOpacity, Platform } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Image, Modal, TouchableOpacity, Platform, Alert, ActivityIndicator } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { CheckCheck, Check, X } from 'lucide-react-native';
+import { CheckCheck, Check, X, Download } from 'lucide-react-native';
 import { useTheme } from '../theme';
 import { useAuthStore } from '../store/useAuthStore';
-import Animated, { FadeInUp, Layout, useAnimatedStyle, withSpring } from 'react-native-reanimated';
+import Animated, { FadeInUp, Layout } from 'react-native-reanimated';
+import * as FileSystem from 'expo-file-system/legacy';
 
 interface MessageBubbleProps {
   id: string;
@@ -45,9 +46,55 @@ export const MessageBubble = ({
   const { currentUserProfile } = useAuthStore();
   const bubbleRef = React.useRef<View>(null);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
-  const isGirl = currentUserProfile?.gender === 'female';
   const isAnniversary = !!currentUserProfile?.anniversaryDate;
+  const isGirl = currentUserProfile?.gender === 'Female';
+
+  const hasMedia = imageUrl || videoUrl || localImageUrl || localVideoUrl;
+
+  const handleSaveToGallery = async () => {
+    try {
+      // ── DYNAMIC CHECK FOR NATIVE MODULE ──
+      let MediaLibrary;
+      try {
+        MediaLibrary = require('expo-media-library');
+      } catch (e) {
+        Alert.alert(
+          'Rebuild Required', 
+          'The "Save to Gallery" feature requires a fresh build. Please run "npx expo run:android" or "ios" to enable this!'
+        );
+        return;
+      }
+
+      setIsSaving(true);
+      const { status } = await MediaLibrary.requestPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Required', 'Please allow access to your gallery to save photos.');
+        return;
+      }
+
+      const remoteUrl = localImageUrl || localVideoUrl || imageUrl || videoUrl;
+      if (!remoteUrl) return;
+
+      const filename = remoteUrl.split('/').pop()?.split('?')[0] || 'luvv_media.jpg';
+      const fileUri = FileSystem.documentDirectory + filename;
+
+      // Download first
+      const { uri } = await FileSystem.downloadAsync(remoteUrl, fileUri);
+      
+      // Save to gallery
+      const asset = await MediaLibrary.createAssetAsync(uri);
+      await MediaLibrary.createAlbumAsync('Luvv', asset, false);
+      
+      Alert.alert('Saved! ✅', 'Photo saved to your Luvv album.');
+    } catch (err) {
+      console.error('[MessageBubble] Save failed:', err);
+      Alert.alert('Save Failed', 'Could not save to gallery.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   return (
     <Animated.View 
@@ -58,7 +105,7 @@ export const MessageBubble = ({
       <Pressable 
         ref={bubbleRef}
         onLongPress={() => onLongPress?.(bubbleRef)}
-        onPress={() => (imageUrl || videoUrl) && !isPending && setIsPreviewOpen(true)}
+        onPress={() => hasMedia && !isPending && setIsPreviewOpen(true)}
       >
       {isMe ? (
         <LinearGradient
@@ -68,11 +115,11 @@ export const MessageBubble = ({
           style={[
             styles.bubble,
             { borderBottomRightRadius: 4, borderRadius: theme.radius.lg },
-            (imageUrl || videoUrl || localImageUrl || localVideoUrl) && { padding: 4 }
+            hasMedia && { padding: 2 }
           ]}
         >
           <View style={styles.bubbleContent}>
-            {(imageUrl || videoUrl || localImageUrl || localVideoUrl) && (
+            {hasMedia && (
               <View>
                 <Image 
                   source={{ uri: localImageUrl || localVideoUrl || imageUrl || videoUrl }} 
@@ -81,20 +128,22 @@ export const MessageBubble = ({
                 />
                 {isPending && (
                   <View style={styles.uploadOverlay}>
-                    <View style={styles.progressRing}>
-                      <View style={[styles.progressInner, { height: `${uploadProgress}%` }]} />
+                    <View style={styles.progressContainer}>
+                      <ActivityIndicator size="small" color="white" />
+                      <Text style={styles.progressText}>{Math.round(uploadProgress)}%</Text>
                     </View>
-                    <Pressable 
-                      style={styles.cancelBtn}
-                      onPress={() => onCancelUpload?.(id)}
+                    <TouchableOpacity 
+                      style={styles.cancelBtnTopRight}
+                      onPress={(e) => { e.stopPropagation(); onCancelUpload?.(id); }}
+                      hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
                     >
-                      <X size={16} color="white" />
-                    </Pressable>
+                      <X size={14} color="white" strokeWidth={3} />
+                    </TouchableOpacity>
                   </View>
                 )}
               </View>
             )}
-            {content ? <Text style={[styles.text, { color: '#FFFFFF', paddingHorizontal: (imageUrl || videoUrl) ? 12 : 0, paddingBottom: (imageUrl || videoUrl) ? 8 : 0 }]}>{content}</Text> : null}
+            {content ? <Text style={[styles.text, { color: '#FFFFFF', paddingHorizontal: hasMedia ? 12 : 0, paddingBottom: hasMedia ? 8 : 0 }]}>{content}</Text> : null}
           </View>
         </LinearGradient>
       ) : (
@@ -102,17 +151,17 @@ export const MessageBubble = ({
           styles.bubble, 
           { backgroundColor: theme.bubblePartner, borderBottomLeftRadius: 4 },
           { borderRadius: theme.radius.lg },
-          (imageUrl || videoUrl || localImageUrl || localVideoUrl) && { padding: 4 }
+          hasMedia && { padding: 4 }
         ]}>
           <View style={styles.bubbleContent}>
-            {(imageUrl || videoUrl || localImageUrl || localVideoUrl) && (
+            {hasMedia && (
               <Image 
                 source={{ uri: localImageUrl || localVideoUrl || imageUrl || videoUrl }} 
                 style={styles.image} 
                 resizeMode="cover"
               />
             )}
-            {content ? <Text style={[styles.text, { color: theme.text, paddingHorizontal: (imageUrl || videoUrl) ? 12 : 0, paddingBottom: (imageUrl || videoUrl) ? 8 : 0 }]}>{content}</Text> : null}
+            {content ? <Text style={[styles.text, { color: theme.text, paddingHorizontal: hasMedia ? 12 : 0, paddingBottom: hasMedia ? 8 : 0 }]}>{content}</Text> : null}
           </View>
         </View>
       )}
@@ -124,24 +173,37 @@ export const MessageBubble = ({
         animationType="fade"
         onRequestClose={() => setIsPreviewOpen(false)}
       >
-        <TouchableOpacity 
-          style={styles.previewOverlay} 
-          activeOpacity={1} 
-          onPress={() => setIsPreviewOpen(false)}
-        >
+        <View style={styles.previewOverlay}>
+          <Pressable 
+            style={StyleSheet.absoluteFill} 
+            onPress={() => setIsPreviewOpen(false)} 
+          />
+          
           <TouchableOpacity 
             style={styles.closePreviewBtn}
             onPress={() => setIsPreviewOpen(false)}
+            hitSlop={{ top: 30, bottom: 30, left: 30, right: 30 }}
+            activeOpacity={0.7}
           >
             <X size={28} color="white" />
           </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={styles.downloadBtn}
+            onPress={handleSaveToGallery}
+            disabled={isSaving}
+          >
+            <Download size={24} color="white" />
+          </TouchableOpacity>
           
-          <Image 
-            source={{ uri: localImageUrl || localVideoUrl || imageUrl || videoUrl }} 
-            style={styles.fullImage} 
-            resizeMode="contain" 
-          />
-        </TouchableOpacity>
+          <View style={styles.fullImageContainer} pointerEvents="none">
+            <Image 
+              source={{ uri: localImageUrl || localVideoUrl || imageUrl || videoUrl }} 
+              style={styles.fullImage} 
+              resizeMode="contain" 
+            />
+          </View>
+        </View>
       </Modal>
 
       <View style={[styles.timestampContainer, isMe ? { justifyContent: 'flex-end' } : { justifyContent: 'flex-start' }]}>
@@ -154,7 +216,7 @@ export const MessageBubble = ({
               <CheckCheck 
                 size={14} 
                 color={isRead 
-                  ? (isAnniversary ? '#FFD700' : (isGirl ? theme.heartPink : '#8B5CF6')) 
+                  ? (isAnniversary ? '#FFD700' : (isGirl ? theme.heartPink : theme.primary)) 
                   : theme.textLight
                 } 
               />
@@ -200,12 +262,12 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   bubbleContent: {
-    gap: 8,
+    gap: 4,
   },
   image: {
-    width: 240,
-    height: 240,
-    borderRadius: 12,
+    width: 260,
+    height: 260,
+    borderRadius: 20, // Match bubble radius for a seamless look
     backgroundColor: 'rgba(0,0,0,0.05)',
   },
   timestampContainer: {
@@ -224,35 +286,34 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginLeft: 4,
   },
-  readIcon: {
-    marginLeft: 4,
-  },
   uploadOverlay: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.2)',
-    borderRadius: 12,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    borderRadius: 20,
   },
-  progressRing: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.3)',
-    justifyContent: 'flex-end',
-    overflow: 'hidden',
+  progressContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 16,
   },
-  progressInner: {
-    width: '100%',
-    backgroundColor: 'white',
-    opacity: 0.8,
+  progressText: {
+    color: 'white',
+    fontSize: 13,
+    fontWeight: '800',
+    marginTop: 8,
   },
-  cancelBtn: {
+  cancelBtnTopRight: {
     position: 'absolute',
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    top: 10,
+    right: 10,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'center',
     alignItems: 'center',
@@ -270,8 +331,28 @@ const styles = StyleSheet.create({
     zIndex: 10,
     padding: 10,
   },
+  downloadBtn: {
+    position: 'absolute',
+    bottom: Platform.OS === 'ios' ? 60 : 40,
+    right: 30,
+    zIndex: 10,
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
+  fullImageContainer: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1,
+  },
   fullImage: {
     width: '100%',
-    height: '100%',
+    height: '80%',
   },
 });

@@ -5,15 +5,12 @@ import { ArrowLeft, Phone } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '../../src/store/useAuthStore';
 import { authService } from '../../src/services/authService';
-import { FirebaseRecaptchaVerifierModal } from 'expo-firebase-recaptcha';
-import { auth } from '../../src/services/firebase';
 
 export default function PhoneLoginScreen() {
   const router = useRouter();
   const [phoneNumber, setPhoneNumber] = useState('');
   const [loading, setLoading] = useState(false);
   const setConfirmationResult = useAuthStore((state) => state.setConfirmationResult);
-  const recaptchaVerifier = useRef<FirebaseRecaptchaVerifierModal>(null);
 
   const handleSendOTP = async () => {
     const digitsOnly = phoneNumber.replace(/\D/g, '');
@@ -26,7 +23,7 @@ export default function PhoneLoginScreen() {
     setLoading(true);
     try {
       const fullPhoneNumber = `+91${digitsOnly}`;
-      const confirmation = await authService.signInWithPhone(fullPhoneNumber, recaptchaVerifier.current);
+      const confirmation = await authService.signInWithPhone(fullPhoneNumber);
       setConfirmationResult(confirmation);
 
       router.push({
@@ -43,13 +40,6 @@ export default function PhoneLoginScreen() {
 
   return (
     <LinearGradient colors={['#FF6B6B', '#FF8E8E']} style={styles.container}>
-      <FirebaseRecaptchaVerifierModal
-        ref={recaptchaVerifier}
-        firebaseConfig={auth.app.options}
-        attemptInvisibleVerification
-        title="Security Check"
-        cancelLabel="Close"
-      />
       
       <KeyboardAvoidingView 
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}

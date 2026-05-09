@@ -1,18 +1,6 @@
-import { 
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  query,
-  runTransaction,
-  setDoc,
-  where,
-  writeBatch,
-  serverTimestamp,
-  Timestamp,
-} from 'firebase/firestore';
+import firestore from '@react-native-firebase/firestore';
 import * as Crypto from 'expo-crypto';
-import { db } from './firebase';
+import { db, serverTimestamp } from './firebase';
 
 const INVITE_CODE_LENGTH = 6;
 const INVITE_EXPIRY_MINUTES = 10;
@@ -34,18 +22,18 @@ export const pairingService = {
 
     try {
       // Direct write with a 5-second timeout
-      const codeRef = doc(db, 'inviteCodes', code);
+      const codeRef = db.collection('inviteCodes').doc(code);
       
       const timeoutPromise = new Promise((_, reject) => 
         setTimeout(() => reject(new Error('Connection timed out. Please check your internet.')), 5000)
       );
 
       await Promise.race([
-        setDoc(codeRef, {
+        codeRef.set({
           code,
           createdBy: userId,
           createdAt: serverTimestamp(),
-          expiresAt: expiryDate,
+          expiresAt: firestore.Timestamp.fromDate(expiryDate),
           isUsed: false
         }),
         timeoutPromise
@@ -54,8 +42,6 @@ export const pairingService = {
       return { code, expiresAt: expiryDate };
     } catch (err: any) {
       console.error('[PairingService] Failed to create code:', err);
-      // Fallback: If it's a permission error, it might be because the document ID (code) exists
-      // but usually it's a network/rule issue.
       throw new Error(err.message || 'Check your internet connection and try again.');
     }
   },
@@ -70,20 +56,15 @@ export const pairingService = {
       throw new Error('Please enter a valid 6-digit code.');
     }
 
-    return await runTransaction(db, async (transaction) => {
-      const codeRef = doc(db, 'inviteCodes', normalizedCode);
+    return await db.runTransaction(async (transaction) => {
+      const codeRef = db.collection('inviteCodes').doc(normalizedCode);
       const codeSnap = await transaction.get(codeRef);
 
-      if (!codeSnap.exists()) {
+      if (!codeSnap.exists) {
         throw new Error('Invalid code. Please check and try again.');
       }
 
-      const data = codeSnap.data() as {
-        createdBy: string;
-        expiresAt: Timestamp;
-        isUsed: boolean;
-      };
-
+      const data = codeSnap.data() as any;
       const now = new Date();
 
       if (data.isUsed) {
@@ -98,21 +79,21 @@ export const pairingService = {
         throw new Error('You cannot join your own code.');
       }
 
-      const currentUserRef = doc(db, 'users', currentUserId);
-      const creatorUserRef = doc(db, 'users', data.createdBy);
+      const currentUserRef = db.collection('users').doc(currentUserId);
+      const creatorUserRef = db.collection('users').doc(data.createdBy);
       const currentUserSnap = await transaction.get(currentUserRef);
       const creatorUserSnap = await transaction.get(creatorUserRef);
 
-      if (!currentUserSnap.exists() || !creatorUserSnap.exists()) {
+      if (!currentUserSnap.exists || !creatorUserSnap.exists) {
         throw new Error('We could not find both user profiles. Please try again.');
       }
 
-      if (currentUserSnap.data().coupleId || creatorUserSnap.data().coupleId) {
+      if (currentUserSnap.data()?.coupleId || creatorUserSnap.data()?.coupleId) {
         throw new Error('One of these accounts is already paired.');
       }
 
       const coupleId = [data.createdBy, currentUserId].sort().join('_');
-      const coupleRef = doc(db, 'couples', coupleId);
+      const coupleRef = db.collection('couples').doc(coupleId);
 
       transaction.set(coupleRef, {
         id: coupleId,
@@ -147,6 +128,14 @@ export const pairingService = {
         },
         { merge: true }
       );
+
+      // ── LOG TO TIMELINE ──
+      // This happens after the transaction technically, but we use the service
+      import('./activityService').then(({ activityService }) => {
+        activityService.logActivity('anniversary', 'We started our journey together! ❤️', {
+          isPairingEvent: true
+        });
+      });
 
       return { coupleId, partnerId: data.createdBy };
     });

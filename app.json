@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "c307d61b-53bf-4180-81f3-10efe7e5279b"
+      }
+    },
+    "android": {
+      "package": "com.ripu.loveapp"
+    }
+  }
+}

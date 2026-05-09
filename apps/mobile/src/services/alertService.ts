@@ -41,7 +41,7 @@ export const alertService = {
    */
   triggerAlert: async (priority: AlertPriority, title: string, body: string) => {
     const { activeSos } = useLocationStore.getState();
-    const userId = useAuthStore.getState().user?.uid || auth.currentUser?.uid;
+    const userId = useAuthStore.getState().user?.uid || auth().currentUser?.uid;
     
     console.log(`[AlertService] ATTEMPT: ${priority} | User: ${userId} | SOS TriggeredBy: ${activeSos?.triggeredBy} | Silent: ${activeSos?.isSilent}`);
 
@@ -97,7 +97,7 @@ export const alertService = {
 
   _startSirenHaptics: () => {
     const { activeSos } = useLocationStore.getState();
-    const userId = useAuthStore.getState().user?.uid || auth.currentUser?.uid;
+    const userId = useAuthStore.getState().user?.uid || auth().currentUser?.uid;
     
     if (victimSilenceOverride || (activeSos?.isActive && activeSos.isSilent && activeSos.triggeredBy === userId)) {
       console.log('[AlertService] EMERGENCY BRAKE: Haptics blocked during Silent SOS.');
@@ -127,7 +127,7 @@ export const alertService = {
 
   _playSirenTone: async () => {
     const { activeSos } = useLocationStore.getState();
-    const userId = useAuthStore.getState().user?.uid || auth.currentUser?.uid;
+    const userId = useAuthStore.getState().user?.uid || auth().currentUser?.uid;
     
     if (victimSilenceOverride || (activeSos?.isActive && activeSos.isSilent && activeSos.triggeredBy === userId)) {
       console.log('[AlertService] EMERGENCY BRAKE: Siren blocked during Silent SOS.');
@@ -183,7 +183,7 @@ export const alertService = {
     if (Platform.OS === 'web') return;
 
     const { activeSos } = useLocationStore.getState();
-    const userId = useAuthStore.getState().user?.uid || auth.currentUser?.uid;
+    const userId = useAuthStore.getState().user?.uid || auth().currentUser?.uid;
     if (victimSilenceOverride || (activeSos?.isActive && activeSos.isSilent && activeSos.triggeredBy === userId)) {
       return;
     }
@@ -214,7 +214,7 @@ export const alertService = {
     if (Platform.OS === 'web') return;
 
     const { activeSos } = useLocationStore.getState();
-    const userId = useAuthStore.getState().user?.uid || auth.currentUser?.uid;
+    const userId = useAuthStore.getState().user?.uid || auth().currentUser?.uid;
     if (victimSilenceOverride || (activeSos?.isActive && activeSos.isSilent && activeSos.triggeredBy === userId)) {
       return;
     }
@@ -232,25 +232,27 @@ export const alertService = {
   triggerHeartbeatHaptics: async () => {
     if (Platform.OS === 'web') return;
 
-    let elapsed = 0;
     const duration = 15000; // 15 seconds
     const interval = 1500;  // Every 1.5 seconds
+    let startTime = Date.now();
 
     const pulse = async () => {
-      // First beat
-      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      // Short delay between beats
-      setTimeout(async () => {
-        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      }, 150);
+      try {
+        // High-fidelity double-thump heartbeat
+        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+        setTimeout(async () => {
+          await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        }, 120);
+      } catch (e) {
+        console.warn('Heartbeat haptic failed:', e);
+      }
     };
 
     // Initial pulse
     pulse();
 
     const heartbeatInterval = setInterval(() => {
-      elapsed += interval;
-      if (elapsed >= duration) {
+      if (Date.now() - startTime >= duration) {
         clearInterval(heartbeatInterval);
         return;
       }
@@ -264,7 +266,7 @@ export const alertService = {
     if (Platform.OS === 'web') return;
 
     const { activeSos } = useLocationStore.getState();
-    const userId = useAuthStore.getState().user?.uid || auth.currentUser?.uid;
+    const userId = useAuthStore.getState().user?.uid || auth().currentUser?.uid;
     if (victimSilenceOverride || (activeSos?.isActive && activeSos.isSilent && activeSos.triggeredBy === userId)) {
       return;
     }

@@ -12,10 +12,13 @@ import Animated, {
   useSharedValue, 
   withSpring, 
   FadeInUp, 
+  FadeOutUp,
   FadeInRight, 
   SlideInDown, 
   withRepeat, 
   withTiming, 
+  withSequence,
+  withDelay,
   Easing, 
   interpolate,
   useAnimatedSensor,
@@ -163,7 +166,14 @@ export const HomeScreen = () => {
   const handleSaveAnniversary = async () => {
     if (!user?.uid || !coupleId) return;
     try {
-      await userService.updateCoupleData(coupleId, { anniversaryDate: anniversaryInput.trim() });
+      const dateStr = anniversaryInput.trim();
+      // Write to both couple doc (shared) and user doc (for theme engine)
+      await userService.updateCoupleData(coupleId, { anniversaryDate: dateStr });
+      await userService.updateUserProfile(user.uid, { anniversaryDate: dateStr });
+      // Optimistically update local store so theme engine sees it immediately
+      if (currentUserProfile) {
+        setCurrentUserProfile({ ...currentUserProfile, anniversaryDate: dateStr });
+      }
       setAnniversaryModalVisible(false);
     } catch (e) {
       console.warn("Failed to update anniversary", e);
@@ -233,7 +243,7 @@ export const HomeScreen = () => {
       {incomingPing && (
         <Animated.View 
           entering={FadeInUp.springify().damping(15)} 
-          exiting={withTiming({ opacity: 0 })}
+          exiting={FadeOutUp.duration(300)}
           style={[styles.pingBanner, { backgroundColor: theme.surface, borderColor: theme.border }]}
         >
           <LinearGradient
@@ -369,15 +379,26 @@ export const HomeScreen = () => {
                   />
                 </Animated.View>
 
-                {/* HIGH-PERFORMANCE HOLOGRAPHIC TEXTURE (CD Effect) */}
-
-                <Animated.View style={holoStyle}>
-                  <Image 
-                    source={{ uri: 'file:///Users/mdwahidkhan/.gemini/antigravity/brain/f27e7c0c-c1a3-4578-af9b-de702b82e965/holographic_cd_texture_1778057583512.png' }}
-                    style={{ width: SCREEN_WIDTH * 2, height: 400, opacity: 0.3 }}
-                    resizeMode="cover"
-                  />
-                </Animated.View>
+                {/* HIGH-PERFORMANCE HOLOGRAPHIC TEXTURE (iOS only for performance) */}
+                {Platform.OS === 'ios' ? (
+                  <Animated.View style={holoStyle}>
+                    <Image 
+                      source={require('../../assets/images/holographic_texture.png')}
+                      style={{ width: SCREEN_WIDTH * 2, height: 400, opacity: 0.3 }}
+                      resizeMode="cover"
+                    />
+                  </Animated.View>
+                ) : (
+                  // Android: Use lightweight gradient shimmer instead
+                  <Animated.View style={holoStyle}>
+                    <LinearGradient
+                      colors={['transparent', 'rgba(255,255,255,0.2)', 'rgba(255,200,255,0.15)', 'transparent']}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={{ width: SCREEN_WIDTH * 2, height: 400 }}
+                    />
+                  </Animated.View>
+                )}
 
                 {/* DYNAMIC TILT SHINE (Simplified) */}
                 <Animated.View style={tiltStyle}>
@@ -622,13 +643,7 @@ const AnimatedHeart = ({ delay, theme }: { delay: number, theme: any }) => {
   );
 };
 
-const withSequence = (...animations: any[]) => {
-  'worklet';
-  return animations.reduceRight((acc, anim) => withTiming(anim.target, anim.config, () => acc), animations[animations.length - 1]);
-};
-// Re-implementing sequence manually if not available or just use nested callbacks if needed, 
-// but actually reanimated has withSequence. Let's use standard reanimated withSequence.
-import { withSequence as reSequence, withDelay } from 'react-native-reanimated';
+
 
 const styles = StyleSheet.create({
   container: {
@@ -659,7 +674,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 24,
-    paddingTop: Platform.OS === 'ios' ? 30 : 50,
+    paddingTop: 16,
     paddingBottom: 120,
   },
   header: {

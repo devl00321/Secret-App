@@ -4,3 +4,13 @@
 
 expo-env.d.ts
 # @end expo-cli
+
+.env
+.env.local
+.env.*.local
+node_modules/
+.expo/
+dist/
+npm-debug.*
+yarn-debug.*
+yarn-error.*

@@ -14,52 +14,47 @@ service cloud.firestore {
     // Checks if the authenticated user is part of the specific couple
     function isPartnerOf(coupleId) {
       let couple = get(/databases/$(database)/documents/couples/$(coupleId)).data;
-      return isSignedIn() && (couple.partner1Id == request.auth.uid || couple.partner2Id == request.auth.uid);
+      return isSignedIn() && (couple.users.hasAny([request.auth.uid]));
     }
 
     // --- Collection Rules ---
 
     // 1. User Profiles
     match /users/{userId} {
-      // Users can read/write their own profile
-      // Partners can read each other's profile to see name/online status
-      allow read: if isSignedIn(); 
-      allow write: if isOwner(userId);
-    }
-
-    // 2. Couples (The Core Relationship)
-    match /couples/{coupleId} {
-      // Only the two partners can read/write the couple document (locations, SOS, saved places)
-      allow read: if isSignedIn() && (
-        resource.data.partner1Id == request.auth.uid || 
-        resource.data.partner2Id == request.auth.uid
-      );
-      
-      allow create: if isSignedIn() && request.resource.data.partner1Id == request.auth.uid;
-      
-      allow update: if isSignedIn() && (
-        resource.data.partner1Id == request.auth.uid || 
-        resource.data.partner2Id == request.auth.uid
-      );
-    }
-
-    // 3. Messages (Chat)
-    match /messages/{messageId} {
-      // Only partners in the specific coupleId can see/send messages
-      allow read: if isSignedIn() && isPartnerOf(resource.data.coupleId);
-      allow create: if isSignedIn() && isPartnerOf(request.resource.data.coupleId);
-      allow update, delete: if isSignedIn() && isOwner(resource.data.senderId);
-    }
-
-    // 4. Pairing Codes
-    match /pairing_codes/{codeId} {
-      // Anyone signed in can read a code to check if it's valid for joining
       allow read: if isSignedIn();
-      // Only the creator can create or delete their own code
-      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
-      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
-      // Allow updates for the pairing process
+      allow create: if isOwner(userId);
+      allow update: if isOwner(userId);
+      allow delete: if isOwner(userId);
+    }
+
+    // 2. Couples
+    match /couples/{coupleId} {
+      allow read: if isSignedIn() && resource.data.users.hasAny([request.auth.uid]);
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && resource.data.users.hasAny([request.auth.uid]);
+      
+      // 3. Messages (Nested Subcollection)
+      // By nesting the match, we get the 'coupleId' from the path!
+      match /messages/{messageId} {
+        allow read: if isPartnerOf(coupleId);
+        allow create: if isPartnerOf(coupleId);
+        allow update: if isPartnerOf(coupleId);
+        allow delete: if isOwner(resource.data.senderId);
+      }
+      
+      // 5. Activities (Nested)
+      match /activities/{activityId} {
+        allow read, write: if isPartnerOf(coupleId);
+      }
+    }
+
+    // 4. Invite Codes (Pairing)
+    match /inviteCodes/{codeId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
       allow update: if isSignedIn();
+      // Only the creator can delete their own invite code
+      allow delete: if isSignedIn() && resource.data.createdBy == request.auth.uid;
     }
   }
 }

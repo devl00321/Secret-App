@@ -14,7 +14,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Header } from '../components/Header';
 import { useTheme } from '../theme';
 import { useAuthStore } from '../store/useAuthStore';
-import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import * as Contacts from 'expo-contacts';
 import DraggableFlatList, { 
@@ -76,8 +75,8 @@ export const EmergencyContactsScreen = () => {
         updatedAt: new Date().toISOString()
       }));
 
-      const userRef = doc(db, 'users', user.uid);
-      await updateDoc(userRef, {
+      const userRef = db.collection('users').doc(user.uid);
+      await userRef.update({
         emergencyContacts: formattedContacts
       });
 

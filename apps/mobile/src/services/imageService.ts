@@ -1,7 +1,6 @@
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { storage } from './firebase';
+import { storageInstance } from './firebase';
 import { useAuthStore } from '../store/useAuthStore';
 
 export const imageService = {
@@ -21,8 +20,8 @@ export const imageService = {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
-        aspect: [4, 3],
-        quality: 0.2, // Initial picker quality
+        aspect: [1, 1], // Square crop for a premium, consistent timeline look
+        quality: 0.8, // High quality for the picker
       });
 
       if (result.canceled || !result.assets[0]) return null;
@@ -30,9 +29,9 @@ export const imageService = {
       // 3. Compress & Resize using Manipulator
       const manipResult = await ImageManipulator.manipulateAsync(
         result.assets[0].uri,
-        [{ resize: { width: 1080 } }], // Resize to modern web standard width
+        [{ resize: { width: 1080 } }], // High-def width but optimized for storage
         { 
-          compress: 0.5, // 50% compression
+          compress: 0.8, // 80% compression (much higher quality)
           format: ImageManipulator.SaveFormat.JPEG 
         }
       );
@@ -49,22 +48,18 @@ export const imageService = {
    */
   uploadImage: async (uri: string, path: string) => {
     try {
-      const { coupleId } = useAuthStore.getState();
-      if (!coupleId) throw new Error('No coupleId found');
+      const { coupleId, user } = useAuthStore.getState();
+      if (!coupleId || !user) throw new Error('Auth state incomplete');
 
-      // Convert URI to Blob
-      const response = await fetch(uri);
-      const blob = await response.blob();
+      // Create storage reference using the dedicated timeline path
+      const storagePath = `timeline/${coupleId}/${user.uid}/${Date.now()}.jpg`;
+      const storageRef = storageInstance.ref(storagePath);
 
-      // Create storage reference
-      const storagePath = `couples/${coupleId}/${path}/${Date.now()}.jpg`;
-      const storageRef = ref(storage, storagePath);
-
-      // Upload
-      await uploadBytes(storageRef, blob);
+      // Pass the URI directly to Native putFile (Firebase handles file:// internally)
+      await storageRef.putFile(uri);
 
       // Get URL
-      const downloadURL = await getDownloadURL(storageRef);
+      const downloadURL = await storageRef.getDownloadURL();
       return downloadURL;
     } catch (err) {
       console.error('[ImageService] Upload failed:', err);

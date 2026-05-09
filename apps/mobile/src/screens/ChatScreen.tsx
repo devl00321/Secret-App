@@ -138,7 +138,10 @@ export const ChatScreen = () => {
 
 
   const renderEmptyState = () => (
-    <View style={[styles.emptyContainer, { transform: [{ scaleY: -1 }] }]}>
+    <View style={[
+      styles.emptyContainer, 
+      Platform.OS === 'ios' && { transform: [{ scaleY: -1 }] }
+    ]}>
       <View style={[styles.emptyHeartWrapper, { backgroundColor: theme.surface, ...theme.shadows.soft }]}>
         <Heart size={40} color={theme.heartPink} fill={theme.heartPink} opacity={0.2} />
       </View>
@@ -200,7 +203,7 @@ export const ChatScreen = () => {
               style={styles.actionButton} 
               onPress={() => Alert.alert('More', 'More features coming soon!')}
               activeOpacity={0.7}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              hitSlop={{ top: 20, bottom: 20, left: 15, right: 15 }}
             >
               <Plus color={theme.textLight} size={24} />
             </TouchableOpacity>
@@ -217,7 +220,7 @@ export const ChatScreen = () => {
               <TouchableOpacity 
                 style={styles.innerIconButton}
                 onPress={handlePickMedia}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                hitSlop={{ top: 15, bottom: 15, left: 15, right: 5 }}
               >
                 <ImageIcon color={theme.textLight} size={20} />
               </TouchableOpacity>
@@ -231,9 +234,12 @@ export const ChatScreen = () => {
               ]} 
               onPress={handleSend}
               disabled={!message.trim()}
-              activeOpacity={0.8}
+              activeOpacity={0.7}
+              hitSlop={{ top: 15, bottom: 15, left: 0, right: 15 }}
             >
-              <Send color="white" size={18} />
+              <View pointerEvents="none">
+                <Send color="white" size={20} />
+              </View>
             </TouchableOpacity>
           </View>
         </View>
@@ -275,7 +281,7 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 140,
+    marginTop: 260, // Increased to push it higher up in the inverted list
   },
   emptyHeartWrapper: {
     width: 90,
@@ -335,9 +341,9 @@ const styles = StyleSheet.create({
     padding: 6,
   },
   sendButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 50,
+    height: 50,
+    borderRadius: 25,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',

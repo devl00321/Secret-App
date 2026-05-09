@@ -1,12 +1,3 @@
-import { 
-  signInWithEmailAndPassword, 
-  createUserWithEmailAndPassword, 
-  signOut,
-  signInWithPhoneNumber,
-  PhoneAuthProvider,
-  signInWithCredential,
-  ConfirmationResult
-} from 'firebase/auth';
 import { auth } from './firebase';
 
 export const authService = {
@@ -15,7 +6,7 @@ export const authService = {
    */
   login: async (email: string, password: string) => {
     try {
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const userCredential = await auth().signInWithEmailAndPassword(email, password);
       return userCredential.user;
     } catch (error) {
       throw error;
@@ -27,7 +18,7 @@ export const authService = {
    */
   signup: async (email: string, password: string) => {
     try {
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      const userCredential = await auth().createUserWithEmailAndPassword(email, password);
       return userCredential.user;
     } catch (error) {
       throw error;
@@ -39,7 +30,7 @@ export const authService = {
    */
   logout: async () => {
     try {
-      await signOut(auth);
+      await auth().signOut();
     } catch (error) {
       throw error;
     }
@@ -48,9 +39,10 @@ export const authService = {
   /**
    * Sign in with phone number (triggers OTP)
    */
-  signInWithPhone: async (phoneNumber: string, recaptchaVerifier: any): Promise<ConfirmationResult> => {
+  signInWithPhone: async (phoneNumber: string) => {
     try {
-      const confirmation = await signInWithPhoneNumber(auth, phoneNumber, recaptchaVerifier);
+      // Native Firebase handles recaptcha automatically
+      const confirmation = await auth().signInWithPhoneNumber(phoneNumber);
       return confirmation;
     } catch (error) {
       throw error;
@@ -60,7 +52,7 @@ export const authService = {
   /**
    * Verify OTP code
    */
-  verifyOTP: async (confirmationResult: ConfirmationResult, code: string) => {
+  verifyOTP: async (confirmationResult: any, code: string) => {
     try {
       const userCredential = await confirmationResult.confirm(code);
       return userCredential.user;
