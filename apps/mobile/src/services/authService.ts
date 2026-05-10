@@ -1,4 +1,4 @@
-import { auth } from './firebase';
+import { authInstance, GoogleAuthProvider } from './firebase';
 
 export const authService = {
   /**
@@ -6,7 +6,7 @@ export const authService = {
    */
   login: async (email: string, password: string) => {
     try {
-      const userCredential = await auth().signInWithEmailAndPassword(email, password);
+      const userCredential = await authInstance.signInWithEmailAndPassword(email, password);
       return userCredential.user;
     } catch (error) {
       throw error;
@@ -18,7 +18,7 @@ export const authService = {
    */
   signup: async (email: string, password: string) => {
     try {
-      const userCredential = await auth().createUserWithEmailAndPassword(email, password);
+      const userCredential = await authInstance.createUserWithEmailAndPassword(email, password);
       return userCredential.user;
     } catch (error) {
       throw error;
@@ -30,7 +30,7 @@ export const authService = {
    */
   logout: async () => {
     try {
-      await auth().signOut();
+      await authInstance.signOut();
     } catch (error) {
       throw error;
     }
@@ -42,7 +42,7 @@ export const authService = {
   signInWithPhone: async (phoneNumber: string) => {
     try {
       // Native Firebase handles recaptcha automatically
-      const confirmation = await auth().signInWithPhoneNumber(phoneNumber);
+      const confirmation = await authInstance.signInWithPhoneNumber(phoneNumber);
       return confirmation;
     } catch (error) {
       throw error;
@@ -55,6 +55,19 @@ export const authService = {
   verifyOTP: async (confirmationResult: any, code: string) => {
     try {
       const userCredential = await confirmationResult.confirm(code);
+      return userCredential.user;
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  /**
+   * Sign in with Google using ID Token
+   */
+  signInWithGoogle: async (idToken: string) => {
+    try {
+      const googleCredential = GoogleAuthProvider.credential(idToken);
+      const userCredential = await authInstance.signInWithCredential(googleCredential);
       return userCredential.user;
     } catch (error) {
       throw error;

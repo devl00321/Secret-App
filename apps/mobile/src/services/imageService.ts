@@ -46,13 +46,13 @@ export const imageService = {
   /**
    * Uploads a file URI to Firebase Storage and returns the download URL
    */
-  uploadImage: async (uri: string, path: string) => {
+  uploadImage: async (uri: string, customPath?: string) => {
     try {
       const { coupleId, user } = useAuthStore.getState();
-      if (!coupleId || !user) throw new Error('Auth state incomplete');
+      if (!user) throw new Error('User not authenticated');
 
-      // Create storage reference using the dedicated timeline path
-      const storagePath = `timeline/${coupleId}/${user.uid}/${Date.now()}.jpg`;
+      // Use provided path or default to timeline
+      const storagePath = customPath || `timeline/${coupleId || 'unpaired'}/${user.uid}/${Date.now()}.jpg`;
       const storageRef = storageInstance.ref(storagePath);
 
       // Pass the URI directly to Native putFile (Firebase handles file:// internally)

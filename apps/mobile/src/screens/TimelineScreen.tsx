@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { StyleSheet, View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Header } from '../components/Header';
@@ -52,6 +52,7 @@ export const TimelineScreen = () => {
   const [caption, setCaption] = useState('');
   const [modalType, setModalType] = useState<'photo' | 'note'>('photo');
   const [selectedTheme, setSelectedTheme] = useState('default');
+  const [editingActivityId, setEditingActivityId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!coupleId) return;
@@ -89,7 +90,11 @@ export const TimelineScreen = () => {
     setCaptionModalVisible(false);
     setIsUploading(true);
     try {
-      if (modalType === 'photo' && pendingImage) {
+      if (editingActivityId && coupleId) {
+        // UPDATE EXISTING
+        await activityService.updateActivity(coupleId, editingActivityId, caption, selectedTheme);
+      } else if (modalType === 'photo' && pendingImage) {
+        // NEW PHOTO
         const downloadUrl = await imageService.uploadImage(pendingImage, 'timeline');
         if (downloadUrl) {
           await activityService.logActivity('memory', caption || 'Shared a new photo! 📸', { 
@@ -98,6 +103,7 @@ export const TimelineScreen = () => {
           });
         }
       } else if (modalType === 'note') {
+        // NEW NOTE
         await activityService.logActivity('memory', caption || 'Pinned a special note 📝', {
           theme: selectedTheme !== 'default' ? selectedTheme : null
         });
@@ -107,6 +113,58 @@ export const TimelineScreen = () => {
       setPendingImage(null);
       setCaption('');
       setSelectedTheme('default');
+      setEditingActivityId(null);
+    }
+  };
+
+  const handleLongPress = (item: Activity) => {
+    // Only allow editing own posts or if you are the one deleting
+    // In a couple app, usually both can delete but only creator can edit? 
+    // User said "options like chat screen"
+    
+    if (Platform.OS !== 'web') {
+      // We'll just use standard React Native Alert for the context menu
+      // to keep it simple and native-feeling as requested
+      Alert.alert(
+        'Manage Post',
+        'What would you like to do with this memory?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { 
+            text: 'Edit Post', 
+            onPress: () => {
+              setEditingActivityId(item.id);
+              setCaption(item.content);
+              setSelectedTheme((item as any).theme || 'default');
+              setPendingImage(item.imageUrl || null);
+              setModalType(item.imageUrl ? 'photo' : 'note');
+              setCaptionModalVisible(true);
+            } 
+          },
+          { 
+            text: 'Delete Permanently', 
+            style: 'destructive', 
+            onPress: () => {
+              Alert.alert(
+                'Are you sure?',
+                'This will remove this memory from your story forever.',
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  { 
+                    text: 'Delete', 
+                    style: 'destructive', 
+                    onPress: async () => {
+                      if (coupleId) {
+                        await activityService.deleteActivity(coupleId, item.id);
+                      }
+                    } 
+                  }
+                ]
+              );
+            } 
+          }
+        ]
+      );
     }
   };
 
@@ -118,11 +176,12 @@ export const TimelineScreen = () => {
     const cardColors = isThemed ? themeData.colors : defaultColors;
 
     return (
-      <Animated.View 
-        entering={FadeIn.duration(600)}
-        key={item.id} 
-        style={[styles.memoryCard, { shadowColor: theme.isDark ? '#000' : theme.primary }]}
-      >
+      <Animated.View entering={FadeIn.duration(600)} key={item.id}>
+        <TouchableOpacity 
+          activeOpacity={0.9}
+          onLongPress={() => handleLongPress(item)}
+          style={[styles.memoryCard, { shadowColor: theme.isDark ? '#000' : theme.primary }]}
+        >
         <LinearGradient
           colors={cardColors as any}
           style={styles.cardGradient}
@@ -183,7 +242,8 @@ export const TimelineScreen = () => {
             )}
           </View>
         </LinearGradient>
-      </Animated.View>
+      </TouchableOpacity>
+    </Animated.View>
     );
   };
 
@@ -239,7 +299,7 @@ export const TimelineScreen = () => {
           style={styles.fabItem} 
           onPress={handleAddPhoto} 
           disabled={isUploading}
-          hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+          hitSlop={{ top: 25, bottom: 25, left: 20, right: 20 }}
         >
           {isUploading ? (
             <ActivityIndicator size="small" color={theme.primary} />
@@ -251,7 +311,7 @@ export const TimelineScreen = () => {
         <TouchableOpacity 
           style={styles.fabItem} 
           onPress={handleShareNote}
-          hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+          hitSlop={{ top: 25, bottom: 25, left: 20, right: 20 }}
         >
           <FileText size={22} color={theme.primary} />
         </TouchableOpacity>
@@ -273,9 +333,12 @@ export const TimelineScreen = () => {
           <View style={[styles.modalCard, { backgroundColor: theme.surface }]}>
             <View style={styles.modalHeader}>
               <Text style={[styles.modalTitle, { color: theme.text }]}>
-                {modalType === 'photo' ? 'New Memory' : 'New Note'}
+                {editingActivityId ? 'Edit Memory' : (modalType === 'photo' ? 'New Memory' : 'New Note')}
               </Text>
-              <TouchableOpacity onPress={() => setCaptionModalVisible(false)}>
+              <TouchableOpacity 
+                onPress={() => setCaptionModalVisible(false)}
+                hitSlop={{ top: 25, bottom: 25, left: 25, right: 25 }}
+              >
                 <Text style={{ color: theme.primary, fontWeight: '700' }}>Cancel</Text>
               </TouchableOpacity>
             </View>
@@ -327,7 +390,7 @@ export const TimelineScreen = () => {
                 style={[styles.shareBtn, { backgroundColor: theme.primary }]} 
                 onPress={handleConfirmUpload}
               >
-                <Text style={styles.shareBtnText}>Share to Story</Text>
+                <Text style={styles.shareBtnText}>{editingActivityId ? 'Save Changes' : 'Share to Story'}</Text>
               </TouchableOpacity>
             </ScrollView>
           </View>

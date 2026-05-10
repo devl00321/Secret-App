@@ -1,8 +1,7 @@
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import * as Battery from 'expo-battery';
-import firestore from '@react-native-firebase/firestore';
-import { db, auth } from './firebase';
+import { db, authInstance, doc, setDoc, updateDoc, onSnapshot } from './firebase';
 import { useLocationStore } from '../store/useLocationStore';
 import { useAuthStore } from '../store/useAuthStore';
 import { notificationService } from './notificationService';
@@ -13,12 +12,17 @@ import { Platform } from 'react-native';
 
 const LOCATION_TASK_NAME = 'background-location-task';
 const IS_EXPO_GO = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
+let lastAiCheckTime = 0;
+const AI_CHECK_INTERVAL = 15 * 60 * 1000; // 15 minutes
 
 // Background Task Definition
 TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
   if (error) {
     if (error.code === 1 || error.message?.includes('kCLErrorDomain Code 1')) {
       console.warn('[Background Location Task] Location access denied. Please ensure "Always" permission is granted in Settings.');
+    } else if (error.code === 0 || error.message?.includes('kCLErrorDomain Code 0')) {
+      // Code 0 is kCLErrorLocationUnknown, common and transient
+      console.warn('[Background Location Task] Location temporarily unknown (Code 0).');
     } else {
       console.error('[Background Location Task] Error:', error);
     }
@@ -28,14 +32,14 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
     const { locations } = data;
     const location = locations[0] as Location.LocationObject;
     if (location) {
-      const currentUser = auth().currentUser;
+      const currentUser = authInstance.currentUser;
       const userId = currentUser?.uid;
       if (userId) {
         try {
-          const userRef = db.collection('users').doc(userId);
+          const userRef = doc(db, 'users', userId);
           // Use set+merge instead of update — update throws [not-found] if the
           // document doesn't exist yet in the background task context
-          await userRef.set({
+          await setDoc(userRef, {
             location: {
               latitude: location.coords.latitude,
               longitude: location.coords.longitude,
@@ -83,6 +87,39 @@ export const locationService = {
         (location) => {
           useLocationStore.getState().setUserLocation(location);
           locationService.syncLocation(location);
+
+          // ── PROACTIVE MAP INTELLIGENCE ──
+          const now = Date.now();
+          const hour = new Date().getHours();
+          const { walkSafe, isTripActive } = useLocationStore.getState();
+          
+          // FOR TESTING: Bypassing time check and reducing interval
+          const TEST_MODE = true; 
+          const interval = TEST_MODE ? 30000 : AI_CHECK_INTERVAL;
+
+          if (now - lastAiCheckTime > interval && !isTripActive && !walkSafe?.isActive) {
+            if (hour >= 22 || hour <= 5 || TEST_MODE) { 
+              lastAiCheckTime = now;
+              
+              // Lazy import to resolve Metro resolution issues
+              import('./aiService').then(({ aiService }) => {
+                aiService.getMapIntelligence({
+                  currentLocation: {
+                    latitude: location.coords.latitude,
+                    longitude: location.coords.longitude
+                  },
+                  timeOfDay: new Date().toLocaleTimeString(),
+                }).then(result => {
+                  if (result?.shouldAlert) {
+                    notificationService.sendLocalNotification(
+                      '🛡️ Safety Suggestion',
+                      `Luvv Guard: ${result.reason}. Tap to enable Reach Safely mode.`
+                    );
+                  }
+                });
+              });
+            }
+          }
         }
       );
 
@@ -123,14 +160,14 @@ export const locationService = {
   },
 
   syncLocation: async (location: Location.LocationObject) => {
-    const userId = auth().currentUser?.uid;
+    const userId = authInstance.currentUser?.uid;
     if (!userId) return;
 
     try {
-      const userRef = db.collection('users').doc(userId);
+      const userRef = doc(db, 'users', userId);
       const battery = await Battery.getPowerStateAsync();
       
-      await userRef.update({
+      await updateDoc(userRef, {
         location: {
           latitude: location.coords.latitude,
           longitude: location.coords.longitude,
@@ -150,10 +187,10 @@ export const locationService = {
   },
 
   subscribeToPartner: (partnerId: string) => {
-    const partnerRef = db.collection('users').doc(partnerId);
-    return partnerRef.onSnapshot((doc) => {
-      if (doc.exists()) {
-        const data = doc.data();
+    const partnerRef = doc(db, 'users', partnerId);
+    return onSnapshot(partnerRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data();
         if (data && data.location) {
           useLocationStore.getState().setPartnerLocation({
             ...data.location,
@@ -219,26 +256,26 @@ export const locationService = {
   },
 
   syncSavedPlaces: async () => {
-    const userId = auth().currentUser?.uid;
+    const userId = authInstance.currentUser?.uid;
     if (!userId) return;
     
     const savedPlaces = useLocationStore.getState().savedPlaces;
     try {
-      const userRef = db.collection('users').doc(userId);
-      await userRef.update({ savedPlaces });
+      const userRef = doc(db, 'users', userId);
+      await updateDoc(userRef, { savedPlaces });
     } catch (err) {
       console.error('[LocationService] Failed to sync saved places:', err);
     }
   },
 
   syncTripStatus: async () => {
-    const userId = auth().currentUser?.uid;
+    const userId = authInstance.currentUser?.uid;
     if (!userId) return;
 
     const { isTripActive, destination } = useLocationStore.getState();
     try {
-      const userRef = db.collection('users').doc(userId);
-      await userRef.update({
+      const userRef = doc(db, 'users', userId);
+      await updateDoc(userRef, {
         trip: {
           isActive: isTripActive,
           destination: destination,
@@ -254,11 +291,12 @@ export const locationService = {
     if (!partnerId || !user) return;
 
     try {
-      const partnerRef = db.collection('users').doc(partnerId);
-      await partnerRef.update({
+      const partnerRef = doc(db, 'users', partnerId);
+      await updateDoc(partnerRef, {
         incomingPing: {
           from: user.uid,
           timestamp: Date.now(),
+          pingId: Math.random().toString(36).substring(7),
           type: 'heartbeat'
         }
       });
@@ -269,10 +307,10 @@ export const locationService = {
 
   subscribeToIncomingPings: (userId: string, onPing: (ping: any) => void) => {
     if (!userId) return () => {};
-    const userRef = db.collection('users').doc(userId);
+    const userRef = doc(db, 'users', userId);
     let lastHandledPingTime = 0;
 
-    return userRef.onSnapshot((snapshot) => {
+    return onSnapshot(userRef, (snapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.data();
         if (!data || !data.incomingPing) return;
@@ -300,8 +338,8 @@ export const locationService = {
   },
 
   subscribeToCoupleSos: (coupleId: string, currentUserId: string) => {
-    const coupleRef = db.collection('couples').doc(coupleId);
-    return coupleRef.onSnapshot((snapshot) => {
+    const coupleRef = doc(db, 'couples', coupleId);
+    return onSnapshot(coupleRef, (snapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.data();
         if (!data) return;
@@ -333,6 +371,32 @@ export const locationService = {
               'Your partner needs help immediately!'
             );
           }
+
+          // ── AI EMERGENCY ANALYSIS ──
+          if (activeSos?.location) {
+            const partnerProfile = useAuthStore.getState().partner;
+            const partnerLoc = useLocationStore.getState().partnerLocation;
+            const userData = useAuthStore.getState().currentUserProfile;
+            
+            // Lazy import to resolve Metro resolution issues
+            import('./aiService').then(({ aiService }) => {
+              aiService.analyzeEmergency({
+                location: {
+                  latitude: activeSos.location.latitude,
+                  longitude: activeSos.location.longitude,
+                  address: activeSos.address || 'Last known location'
+                },
+                batteryLevel: partnerLoc?.batteryLevel ? partnerLoc.batteryLevel / 100 : undefined,
+                time: new Date().toLocaleTimeString(),
+                partnerName: partnerProfile?.displayName || 'Partner',
+                userName: userData?.displayName || 'User',
+              }).then(insight => {
+                if (insight) {
+                  useLocationStore.getState().setAiInsight(insight);
+                }
+              });
+            });
+          }
         } else if (justBecameActive && activeSos?.triggeredBy === userId) {
           console.log('[LocationService] Victim triggered SOS - UI only, no local alert.');
           // Victim NEVER gets the siren/vibration alert, only the partner does.
@@ -343,6 +407,7 @@ export const locationService = {
           alertService.stopSiren();
           alertService.setVictimSilence(false);
           setSirenMuted(false); // Reset for next time
+          useLocationStore.getState().setAiInsight(null); // Clear AI insight
         }
       }
     });
@@ -368,8 +433,8 @@ export const locationService = {
       if (isSilent) {
         alertService.setVictimSilence(true);
       }
-      const coupleRef = db.collection('couples').doc(coupleId);
-      await coupleRef.update({ activeSos: sosData });
+      const coupleRef = doc(db, 'couples', coupleId);
+      await updateDoc(coupleRef, { activeSos: sosData });
       setActiveSos(sosData);
 
       // Log to timeline
@@ -418,8 +483,8 @@ export const locationService = {
 
     try {
       alertService.setVictimSilence(false);
-      const coupleRef = db.collection('couples').doc(coupleId);
-      await coupleRef.update({ activeSos: null });
+      const coupleRef = doc(db, 'couples', coupleId);
+      await updateDoc(coupleRef, { activeSos: null });
       setActiveSos(null);
     } catch (err) {
       console.error('[LocationService] SOS Clear failed:', err);
@@ -589,13 +654,13 @@ export const locationService = {
   },
 
   syncWalkSafe: async () => {
-    const userId = auth().currentUser?.uid;
+    const userId = authInstance.currentUser?.uid;
     if (!userId) return;
 
     const { walkSafe } = useLocationStore.getState();
     try {
-      const userRef = db.collection('users').doc(userId);
-      await userRef.update({
+      const userRef = doc(db, 'users', userId);
+      await updateDoc(userRef, {
         walkSafe: walkSafe ? {
           isActive: walkSafe.isActive,
           destinationName: walkSafe.destination?.name || null,

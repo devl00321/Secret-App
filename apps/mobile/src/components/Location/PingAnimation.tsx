@@ -19,6 +19,7 @@ interface HeartItem {
   x: number;
   delay: number;
   scale: number;
+  rotation: number;
 }
 
 export const PingAnimation = ({ visible, onComplete }: { visible: boolean, onComplete: () => void }) => {
@@ -34,7 +35,7 @@ export const PingAnimation = ({ visible, onComplete }: { visible: boolean, onCom
         scale: 0.3 + Math.random() * 2.0, // More varied sizes
         rotation: Math.random() * 360
       }));
-      setHearts(newHearts as any);
+      setHearts(newHearts);
 
       const timer = setTimeout(() => {
         onComplete();

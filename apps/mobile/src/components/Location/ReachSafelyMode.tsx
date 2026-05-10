@@ -192,7 +192,10 @@ export const ReachSafelyMode = ({ visible, onClose }: ReachSafelyModeProps) => {
               <>
                 <View style={styles.modalHeader}>
                   <Text style={[styles.modalTitle, { color: theme.text }]}>Where are you going? 📍</Text>
-                  <TouchableOpacity onPress={handleClose}>
+                  <TouchableOpacity 
+                    onPress={handleClose}
+                    hitSlop={{ top: 25, bottom: 25, left: 25, right: 25 }}
+                  >
                     <X size={24} color={theme.textLight} />
                   </TouchableOpacity>
                 </View>
@@ -239,7 +242,10 @@ export const ReachSafelyMode = ({ visible, onClose }: ReachSafelyModeProps) => {
                   <TouchableOpacity onPress={() => setPhase('destination')}>
                     <Text style={[styles.backLink, { color: theme.primary }]}>← Back</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity onPress={handleClose}>
+                  <TouchableOpacity 
+                    onPress={handleClose}
+                    hitSlop={{ top: 25, bottom: 25, left: 25, right: 25 }}
+                  >
                     <X size={24} color={theme.textLight} />
                   </TouchableOpacity>
                 </View>
@@ -412,6 +418,7 @@ export const ReachSafelyMode = ({ visible, onClose }: ReachSafelyModeProps) => {
             style={[styles.cancelTripBtn, { borderColor: theme.border }]}
             onPress={handleCancelWalkSafe}
             activeOpacity={0.8}
+            hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
           >
             <X size={16} color={theme.textLight} />
             <Text style={[styles.cancelTripText, { color: theme.textLight }]}>Cancel</Text>

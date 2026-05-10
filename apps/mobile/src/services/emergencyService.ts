@@ -1,7 +1,6 @@
 import * as SMS from 'expo-sms';
 import { Linking, Platform } from 'react-native';
-import { db, auth, storageInstance, serverTimestamp } from './firebase';
-import firestore from '@react-native-firebase/firestore';
+import { db, authInstance, storageInstance, serverTimestamp, doc, updateDoc, collection, addDoc, FieldValue } from './firebase';
 
 export const emergencyService = {
   /**
@@ -64,7 +63,7 @@ export const emergencyService = {
    * Upload an emergency photo to Firebase Storage and update the SOS record
    */
   uploadEmergencyPhoto: async (uri: string, cameraType: 'front' | 'back', coupleId: string) => {
-    const userId = auth().currentUser?.uid;
+    const userId = authInstance.currentUser?.uid;
     if (!userId) return null;
 
     try {
@@ -80,9 +79,9 @@ export const emergencyService = {
       const downloadUrl = await storageRef.getDownloadURL();
 
       // 4. Update the SOS record in Firestore
-      const coupleRef = db.collection('couples').doc(coupleId);
-      await coupleRef.update({
-        'activeSos.photos': firestore.FieldValue.arrayUnion({
+      const coupleRef = doc(db, 'couples', coupleId);
+      await updateDoc(coupleRef, {
+        'activeSos.photos': FieldValue.arrayUnion({
           url: downloadUrl,
           timestamp: Date.now(),
           type: cameraType
@@ -91,7 +90,7 @@ export const emergencyService = {
       });
 
       // 5. Post to Chat automatically (must use nested path per Firestore rules)
-      await db.collection('couples').doc(coupleId).collection('messages').add({
+      await addDoc(collection(db, 'couples', coupleId, 'messages'), {
         text: `📸 Emergency ${cameraType} photo captured.`,
         imageUrl: downloadUrl,
         senderId: userId,

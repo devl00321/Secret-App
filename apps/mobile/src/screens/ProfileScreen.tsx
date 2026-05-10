@@ -13,6 +13,7 @@ import { TextInput, TouchableWithoutFeedback, StyleSheet, View, Text, ScrollView
 import { useSettingsStore } from '../store/useSettingsStore';
 import { biometricService } from '../services/biometricService';
 import * as Haptics from 'expo-haptics';
+import { Image } from 'expo-image';
 
 export const ProfileScreen = () => {
   const theme = useTheme();
@@ -23,28 +24,7 @@ export const ProfileScreen = () => {
   const [locationPermissions, setLocationPermissions] = useState(true);
   const [isAppearanceModalVisible, setAppearanceModalVisible] = useState(false);
 
-  const [isEditModalVisible, setEditModalVisible] = useState(false);
-  const [editName, setEditName] = useState(currentUserProfile?.displayName || user?.displayName || '');
-  const [editGender, setEditGender] = useState<"" | "Male" | "Female">(currentUserProfile?.gender || '');
-  const [editDob, setEditDob] = useState(currentUserProfile?.dob || '');
 
-  const handleSaveProfile = async () => {
-    if (!user?.uid) return;
-    try {
-      const updates = {
-        displayName: editName.trim(),
-        gender: editGender as "" | "Male" | "Female", // Remove .trim() which was converting to generic string
-        dob: editDob.trim(),
-      };
-      await userService.updateUserProfile(user.uid, updates);
-      if (currentUserProfile) {
-        setCurrentUserProfile({ ...currentUserProfile, ...updates } as any);
-      }
-      setEditModalVisible(false);
-    } catch (e) {
-      console.warn("Failed to update profile", e);
-    }
-  };
 
   const handleToggleBiometric = async (value: boolean) => {
     if (value) {
@@ -90,7 +70,7 @@ export const ProfileScreen = () => {
                       if (Platform.OS !== 'web') {
                         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
                       }
-                      await userService.deleteUserAccount(user.uid, currentUserProfile?.partnerId || null);
+                      await userService.deleteUserAccount(user.uid, currentUserProfile?.partnerId || null, currentUserProfile?.coupleId || null);
                       // Clear store and redirect
                       setCoupleId(null);
                       setPartner(null);
@@ -98,8 +78,12 @@ export const ProfileScreen = () => {
                       setUser(null);
                       router.replace('/(auth)');
                     } catch (e: any) {
-                      if (e.code === 'auth/requires-recent-login') {
-                        Alert.alert("Security Check", "Please log out and log back in before deleting your account for security reasons.");
+                      if (e.code === 'auth/requires-recent-login' || e.message?.includes('requires-recent-login')) {
+                        Alert.alert(
+                          "Security Check", 
+                          "For your protection, deleting your account requires a recent login. Please log out and log back in, then try again.",
+                          [{ text: "OK", onPress: () => logout() }]
+                        );
                       } else {
                         Alert.alert("Error", "Failed to delete account. Please try again later.");
                       }
@@ -120,25 +104,31 @@ export const ProfileScreen = () => {
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         
         <Animated.View entering={FadeInUp.duration(600)} style={styles.profileHeader}>
-          <View style={[styles.avatarLarge, { backgroundColor: theme.primarySoft, borderColor: theme.surface }]}>
-            {/* Initials-based avatar — feels personal and premium */}
-            <View style={[styles.initialsCircle, { backgroundColor: theme.primary }]}>
-              <Text style={styles.initialsText}>
-                {(currentUserProfile?.displayName || user?.displayName || 'U').charAt(0).toUpperCase()}
-              </Text>
+          <TouchableOpacity 
+            activeOpacity={0.85}
+            onPress={() => router.push('/(app)/edit-profile')}
+            style={styles.avatarContainer}
+            hitSlop={{ top: 3, bottom: 3, left: 3, right: 3 }}
+          >
+            <View style={[styles.avatarLarge, { backgroundColor: theme.primarySoft, borderColor: theme.surface }]}>
+              {currentUserProfile?.photoURL ? (
+                <Image 
+                  source={{ uri: currentUserProfile.photoURL }} 
+                  style={styles.avatarImage} 
+                  contentFit="cover"
+                />
+              ) : (
+                <View style={[styles.initialsCircle, { backgroundColor: theme.primary }]}>
+                  <Text style={styles.initialsText}>
+                    {(currentUserProfile?.displayName || user?.displayName || 'U').charAt(0).toUpperCase()}
+                  </Text>
+                </View>
+              )}
             </View>
-            <TouchableOpacity 
-              style={[styles.editAvatarBtn, { backgroundColor: theme.surface, borderColor: theme.border }]}
-              onPress={() => {
-                setEditName(currentUserProfile?.displayName || user?.displayName || '');
-                setEditGender(currentUserProfile?.gender || '');
-                setEditDob(currentUserProfile?.dob || '');
-                setEditModalVisible(true);
-              }}
-            >
+            <View style={[styles.editAvatarBtn, { backgroundColor: theme.surface, borderColor: theme.border }]}>
               <Edit2 size={16} color={theme.primary} />
-            </TouchableOpacity>
-          </View>
+            </View>
+          </TouchableOpacity>
           <Text style={[styles.userName, { color: theme.text }]}>{currentUserProfile?.displayName || user?.displayName || 'User'}</Text>
           <Text style={[styles.userEmail, { color: theme.textLight }]}>{user?.email || 'Connected'}</Text>
         </Animated.View>
@@ -244,85 +234,7 @@ export const ProfileScreen = () => {
         <Text style={styles.versionText}>LUVV Premium • v1.2.0</Text>
       </ScrollView>
 
-      {/* Edit Profile Modal */}
-      {isEditModalVisible && (
-        <Animated.View entering={FadeInUp.duration(200)} style={styles.modalOverlay}>
-          <TouchableWithoutFeedback onPress={() => setEditModalVisible(false)}>
-            <View style={StyleSheet.absoluteFillObject} />
-          </TouchableWithoutFeedback>
-          <View style={[styles.modalContent, { backgroundColor: theme.background, borderColor: theme.border }]}>
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: theme.text }]}>Edit Profile</Text>
-              <TouchableOpacity onPress={() => setEditModalVisible(false)}>
-                <X size={24} color={theme.textLight} />
-              </TouchableOpacity>
-            </View>
-            
-            <View style={[styles.modalInputWrapper, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-              <Text style={[styles.inputLabel, { color: theme.textLight }]}>Name</Text>
-              <TextInput
-                style={[styles.modalInput, { color: theme.text }]}
-                value={editName}
-                onChangeText={setEditName}
-                placeholder="Name"
-                placeholderTextColor={theme.textLight}
-              />
-            </View>
 
-            <View style={[styles.modalInputWrapper, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-              <Text style={[styles.inputLabel, { color: theme.textLight }]}>Gender</Text>
-              {/* Toggle buttons — prevents silent theme bug from free-text typos */}
-              <View style={styles.genderToggleRow}>
-                {(['Male', 'Female'] as const).map((g) => (
-                  <TouchableOpacity
-                    key={g}
-                    style={[
-                      styles.genderBtn,
-                      editGender === g && { backgroundColor: theme.primary, borderColor: theme.primary }
-                    ]}
-                    onPress={() => setEditGender(g)}
-                  >
-                    <Text style={[
-                      styles.genderBtnText,
-                      { color: editGender === g ? 'white' : theme.textLight }
-                    ]}>
-                      {g === 'Male' ? '👨 Male' : '👩 Female'}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-
-            <View style={[styles.modalInputWrapper, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-              <Text style={[styles.inputLabel, { color: theme.textLight }]}>Date of Birth (DD/MM/YYYY)</Text>
-              <TextInput
-                style={[styles.modalInput, { color: theme.text }]}
-                value={editDob}
-                keyboardType="numeric"
-                maxLength={10}
-                placeholder="DD/MM/YYYY"
-                placeholderTextColor={theme.textLight}
-                onChangeText={(text) => {
-                  let cleaned = text.replace(/[^\d/]/g, '');
-                  if (cleaned.length === 2 && editDob.length === 1 && !cleaned.includes('/')) {
-                    cleaned += '/';
-                  } else if (cleaned.length === 5 && editDob.length === 4 && cleaned.split('/').length === 2) {
-                    cleaned += '/';
-                  }
-                  setEditDob(cleaned);
-                }}
-              />
-            </View>
-            
-            <TouchableOpacity 
-              style={[styles.saveBtn, { backgroundColor: theme.primary }]}
-              onPress={handleSaveProfile}
-            >
-              <Text style={styles.saveBtnText}>Save</Text>
-            </TouchableOpacity>
-          </View>
-        </Animated.View>
-      )}
 
       {/* Appearance Modal */}
       {isAppearanceModalVisible && (
@@ -333,7 +245,10 @@ export const ProfileScreen = () => {
           <View style={[styles.modalContent, { backgroundColor: theme.background, borderColor: theme.border }]}>
             <View style={styles.modalHeader}>
               <Text style={[styles.modalTitle, { color: theme.text }]}>Appearance</Text>
-              <TouchableOpacity onPress={() => setAppearanceModalVisible(false)}>
+              <TouchableOpacity 
+                onPress={() => setAppearanceModalVisible(false)}
+                hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+              >
                 <X size={24} color={theme.textLight} />
               </TouchableOpacity>
             </View>
@@ -386,13 +301,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginVertical: 40,
   },
+  avatarContainer: {
+    position: 'relative',
+    width: 110,
+    height: 110,
+    marginBottom: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   avatarLarge: {
     width: 110,
     height: 110,
     borderRadius: 40,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 20,
     borderWidth: 4,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 10 },
@@ -400,6 +322,12 @@ const styles = StyleSheet.create({
     shadowRadius: 20,
     elevation: 8,
     transform: [{ rotate: '5deg' }],
+    overflow: 'hidden',
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 36,
   },
   initialsCircle: {
     width: 70,
@@ -443,7 +371,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
-    transform: [{ rotate: '-5deg' }],
+    zIndex: 10,
   },
   userName: {
     fontSize: 26,

@@ -10,7 +10,7 @@ import { biometricService } from '../services/biometricService';
 import { locationService } from '../services/locationService';
 import { useLocationStore } from '../store/useLocationStore';
 import { useAuthStore } from '../store/useAuthStore';
-import { auth } from '../services/firebase';
+import { authInstance } from '../services/firebase';
 import { SOSButton } from '../components/SOSButton';
 import { EmergencyContactModal } from '../components/Safety/EmergencyContactModal';
 import { ReachSafelyMode } from '../components/Location/ReachSafelyMode';
@@ -42,7 +42,7 @@ export const SafetyScreen = () => {
   // Track the SOS Active state to force the background to red if it was triggered elsewhere
   useEffect(() => {
     if (activeSos?.isActive) {
-      const userId = auth.currentUser?.uid;
+      const userId = authInstance.currentUser?.uid;
       const isVictim = activeSos.triggeredBy === userId;
       
       // If I'm the victim and it's silent, don't show the red background
@@ -116,7 +116,7 @@ export const SafetyScreen = () => {
       <StatusBar style={activeSos?.isActive ? 'light' : 'auto'} animated />
       <SafeAreaView style={styles.safeArea}>
         <EmergencyCapture 
-          isActive={!!activeSos?.isActive && activeSos.triggeredBy === auth.currentUser?.uid} 
+          isActive={!!activeSos?.isActive && activeSos.triggeredBy === authInstance.currentUser?.uid} 
           isSilent={activeSos?.isSilent}
         />
         <Header 
@@ -194,7 +194,10 @@ export const SafetyScreen = () => {
           {/* GUARDIAN NETWORK SECTION */}
           <View style={styles.sectionHeader}>
             <Animated.Text style={[styles.sectionTitle, { color: textColor }]}>Guardian Network</Animated.Text>
-            <TouchableOpacity onPress={() => router.push('/(app)/emergency-contacts')}>
+            <TouchableOpacity 
+              onPress={() => router.push('/(app)/emergency-contacts')}
+              hitSlop={{ top: 15, bottom: 15, left: 20, right: 20 }}
+            >
               <Animated.Text style={[styles.editLink, { color: theme.primary }]}>Add / Manage</Animated.Text>
             </TouchableOpacity>
           </View>

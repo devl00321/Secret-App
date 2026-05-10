@@ -1,5 +1,4 @@
-import { db, auth, serverTimestamp } from './firebase';
-import firestore from '@react-native-firebase/firestore';
+import { db, authInstance, serverTimestamp, collection, doc, setDoc, getDoc, updateDoc, deleteDoc, writeBatch, getDocs } from './firebase';
 
 export interface PartnerProfile {
   id: string;
@@ -12,7 +11,7 @@ export interface PartnerProfile {
   coupleId: string | null;
   isOnline: boolean;
   lastMessage?: string;
-  gender?: 'Male' | 'Female' | '';
+  gender?: 'Male' | 'Female' | 'Non-binary' | 'Prefer not to say' | '';
   dob?: string; // DD/MM/YYYY
   profileSetupComplete?: boolean;
   partnerNickname?: string;
@@ -47,7 +46,7 @@ export const userService = {
    */
   createUserIfNotExists: async (user: any) => {
     try {
-      const userRef = firestore().collection('users').doc(user.uid);
+      const userRef = doc(db, 'users', user.uid);
       
       const timeoutPromise = new Promise((_, reject) => 
         setTimeout(() => reject(new Error('Timeout')), 3000)
@@ -55,11 +54,11 @@ export const userService = {
 
       // Use a short-lived check for existence with timeout
       const userSnap = await Promise.race([
-        userRef.get(),
+        getDoc(userRef),
         timeoutPromise
       ]) as any;
 
-      if (!userSnap.exists) {
+      if (!userSnap.exists()) {
         const userData = {
           id: user.uid,
           email: user.email || null,
@@ -72,11 +71,11 @@ export const userService = {
           isOnline: true,
           profileSetupComplete: false,
         };
-        await userRef.set(userData);
+        await setDoc(userRef, userData);
         return userData;
       } else {
         // Update presence even on existing user
-        await userRef.update({ isOnline: true });
+        await updateDoc(userRef, { isOnline: true });
         return userSnap.data() as PartnerProfile;
       }
     } catch (err) {
@@ -87,7 +86,7 @@ export const userService = {
 
   getUserData: async (uid: string): Promise<PartnerProfile | null> => {
     try {
-      const userSnap = await firestore().collection('users').doc(uid).get();
+      const userSnap = await getDoc(doc(db, 'users', uid));
       const data = userSnap.data();
       return data ? (data as PartnerProfile) : null;
     } catch (err) {
@@ -98,8 +97,8 @@ export const userService = {
 
   updateUserPresence: async (uid: string, isOnline: boolean) => {
     try {
-      const userRef = firestore().collection('users').doc(uid);
-      await userRef.set({ 
+      const userRef = doc(db, 'users', uid);
+      await setDoc(userRef, { 
         isOnline,
         lastActive: serverTimestamp() 
       }, { merge: true });
@@ -110,8 +109,8 @@ export const userService = {
 
   updateUserProfile: async (uid: string, data: Partial<PartnerProfile>) => {
     try {
-      const userRef = firestore().collection('users').doc(uid);
-      await userRef.set(data, { merge: true });
+      const userRef = doc(db, 'users', uid);
+      await setDoc(userRef, data, { merge: true });
     } catch (err) {
       console.warn('[UserService] Profile update failed:', err);
       throw err;
@@ -120,8 +119,8 @@ export const userService = {
 
   updatePartnerNickname: async (uid: string, nickname: string) => {
     try {
-      const userRef = firestore().collection('users').doc(uid);
-      await userRef.set({ partnerNickname: nickname }, { merge: true });
+      const userRef = doc(db, 'users', uid);
+      await setDoc(userRef, { partnerNickname: nickname }, { merge: true });
     } catch (err) {
       console.warn('[UserService] Nickname update failed:', err);
       throw err;
@@ -130,8 +129,8 @@ export const userService = {
 
   updateCoupleData: async (coupleId: string, data: CoupleUpdateData) => {
     try {
-      const coupleRef = firestore().collection('couples').doc(coupleId);
-      await coupleRef.set(data as any, { merge: true });
+      const coupleRef = doc(db, 'couples', coupleId);
+      await setDoc(coupleRef, data as any, { merge: true });
     } catch (err) {
       console.warn('[UserService] Couple update failed:', err);
       throw err;
@@ -142,32 +141,57 @@ export const userService = {
    * Permanently deletes the user's account and all associated data.
    * Requirement for App Store / Play Store.
    */
-  deleteUserAccount: async (uid: string, partnerId: string | null) => {
+  deleteUserAccount: async (uid: string, partnerId: string | null, coupleId: string | null) => {
     try {
-      const userRef = firestore().collection('users').doc(uid);
+      // 1. Try to delete the user from Firebase Auth FIRST
+      const currentUser = authInstance.currentUser;
+      if (currentUser) {
+        await currentUser.delete();
+      } else {
+        throw new Error('No current user found');
+      }
+
+      // 2. If Auth deletion succeeds, clean up SHARED DATA (Chat & Timeline)
+      if (coupleId) {
+        const coupleRef = doc(db, 'couples', coupleId);
+        
+        // Delete messages sub-collection
+        const messages = await getDocs(collection(db, 'couples', coupleId, 'messages'));
+        if (!messages.empty) {
+          const msgBatch = writeBatch(db);
+          messages.docs.forEach(docSnap => msgBatch.delete(docSnap.ref));
+          await msgBatch.commit();
+        }
+
+        // Delete activities sub-collection
+        const activities = await getDocs(collection(db, 'couples', coupleId, 'activities'));
+        if (!activities.empty) {
+          const actBatch = writeBatch(db);
+          activities.docs.forEach(docSnap => actBatch.delete(docSnap.ref));
+          await actBatch.commit();
+        }
+
+        // Delete the main couple document
+        await deleteDoc(coupleRef);
+      }
+
+      // 3. Clean up USER profile and Partner references
+      const userRef = doc(db, 'users', uid);
       
-      // 1. If paired, remove the partner's reference to this user
       if (partnerId) {
-        const partnerRef = firestore().collection('users').doc(partnerId);
-        await partnerRef.set({
+        const partnerRef = doc(db, 'users', partnerId);
+        await setDoc(partnerRef, {
           partnerId: null,
           coupleId: null,
           partnerNickname: null,
         }, { merge: true });
       }
 
-      // 2. Delete the user document from Firestore
-      await userRef.delete();
-
-      // 3. Delete the user from Firebase Auth
-      const currentUser = auth().currentUser;
-      if (currentUser) {
-        await currentUser.delete();
-      }
+      await deleteDoc(userRef);
       
       return true;
     } catch (err) {
-      console.error('[UserService] Account deletion failed:', err);
+      console.error('[UserService] Full data purge failed:', err);
       throw err;
     }
   }

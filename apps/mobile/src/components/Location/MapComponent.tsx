@@ -147,7 +147,7 @@ export const MapComponent = React.memo(({
             coordinate={userCoords}
             title="Me"
             tracksViewChanges={shouldTrack}
-            anchor={{ x: 0.5, y: 0.5 }}
+            anchor={{ x: 0.5, y: 1 }}
             zIndex={10}
           >
             <HeartMarker type="me" initial={user?.displayName?.[0] || 'M'} color={myColor} />
@@ -160,7 +160,7 @@ export const MapComponent = React.memo(({
             coordinate={partnerCoords}
             title="Partner"
             tracksViewChanges={shouldTrack}
-            anchor={{ x: 0.5, y: 0.5 }}
+            anchor={{ x: 0.5, y: 1 }}
             onPress={onMarkerPress}
             zIndex={10}
           >

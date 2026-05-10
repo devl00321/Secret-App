@@ -10,6 +10,7 @@ import {
   ShieldAlert,
   Phone,
   Shield,
+  ShieldCheck,
   MapPin,
   X,
   Clock,
@@ -64,7 +65,8 @@ export const LocationScreen = () => {
     lastCompletedTime,
     partnerLastCompletedPath,
     partnerLastCompletedTime,
-    incomingPing // Added
+    incomingPing,
+    aiInsight
   } = useLocationStore();
 
   const [showSettings, setShowSettings] = useState(false);
@@ -77,6 +79,7 @@ export const LocationScreen = () => {
   const [isSelectingLocation, setIsSelectingLocation] = useState(false);
   const [showAddPlaceModal, setShowAddPlaceModal] = useState(false);
   const [selectedCoords, setSelectedCoords] = useState<{ latitude: number, longitude: number } | null>(null);
+  const [selectedLocationName, setSelectedLocationName] = useState<string | null>(null);
   const bannerPulse = useRef(new Animated.Value(1)).current;
   const partnerName = currentUserProfile?.partnerNickname || partner?.displayName || 'Partner';
 
@@ -221,15 +224,15 @@ export const LocationScreen = () => {
       {isPartnerSos && (
         <View style={styles.emergencyOverlay} pointerEvents="box-none">
           <LinearGradient 
-            colors={['rgba(0,0,0,0.8)', 'transparent', 'rgba(139,0,0,0.6)']} 
+            colors={['rgba(0,0,0,0.8)', 'transparent', 'transparent']} 
             style={StyleSheet.absoluteFill} 
             pointerEvents="none"
           />
           <SafeAreaView style={styles.sosHeader}>
-            <Animated.View style={[styles.sosBanner, { transform: [{ scale: bannerPulse }] }]}>
+            <View style={styles.sosBanner}>
               <ShieldAlert size={24} color="white" strokeWidth={3} />
               <Text style={styles.sosBannerText}>PARTNER SOS ACTIVE</Text>
-            </Animated.View>
+            </View>
           </SafeAreaView>
           <View style={styles.emergencyPanelContainer}>
             <View style={styles.emergencyPanel}>
@@ -237,11 +240,32 @@ export const LocationScreen = () => {
                 <View style={styles.statusDot} />
                 <Text style={styles.panelTitle}>Emergency Response</Text>
               </View>
+
+              {aiInsight && (
+                <View style={[
+                  styles.aiInsightBox, 
+                  { backgroundColor: aiInsight.riskLevel === 'high' ? 'rgba(255, 59, 48, 0.05)' : 'rgba(0, 122, 255, 0.05)' }
+                ]}>
+                  <View style={styles.aiHeader}>
+                    <Shield size={14} color={aiInsight.riskLevel === 'high' ? '#FF3B30' : '#007AFF'} />
+                    <Text style={[
+                      styles.aiTitle, 
+                      { color: aiInsight.riskLevel === 'high' ? '#FF3B30' : '#007AFF' }
+                    ]}>SAFETY GUARD INSIGHT</Text>
+                  </View>
+                  <Text style={styles.aiSummary}>{aiInsight.summary}</Text>
+                  <View style={styles.aiSuggestion}>
+                    <Text style={styles.aiSuggestionLabel}>SUGGESTION: </Text>
+                    <Text style={styles.aiSuggestionText}>{aiInsight.suggestion}</Text>
+                  </View>
+                </View>
+              )}
+
               <View style={styles.emergencyActions}>
                 <TouchableOpacity 
                   style={[styles.emergencyBtn, { backgroundColor: '#FF3B30' }]} 
                   onPress={() => Linking.openURL('tel:112')}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
                 >
                   <Phone size={20} color="white" />
                   <Text style={styles.emergencyBtnText} numberOfLines={1}>Call 112</Text>
@@ -255,7 +279,7 @@ export const LocationScreen = () => {
                       Alert.alert('No Phone Number', 'Your partner has not set a phone number in their profile.');
                     }
                   }}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
                 >
                   <Phone size={20} color="white" />
                   <Text style={styles.emergencyBtnText} numberOfLines={1}>Call Partner</Text>
@@ -263,7 +287,7 @@ export const LocationScreen = () => {
                 <TouchableOpacity 
                   style={[styles.emergencyBtn, { backgroundColor: '#007AFF' }]} 
                   onPress={handleNavigate}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
                 >
                   <Navigation2 size={20} color="white" />
                   <Text style={styles.emergencyBtnText} numberOfLines={1}>Navigate</Text>
@@ -275,7 +299,7 @@ export const LocationScreen = () => {
                       alertService.stopSiren();
                       setSirenMuted(true);
                     }}
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
                   >
                     <VolumeX size={20} color="white" />
                     <Text style={styles.emergencyBtnText} numberOfLines={1}>Mute Siren</Text>
@@ -295,7 +319,7 @@ export const LocationScreen = () => {
               <TouchableOpacity
                 style={[styles.iconButton, { backgroundColor: theme.surface }]}
                 onPress={() => setShowSettings(true)}
-                hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+                hitSlop={{ top: 25, bottom: 25, left: 25, right: 25 }}
               >
                 <Settings size={22} color={theme.text} />
               </TouchableOpacity>
@@ -308,7 +332,7 @@ export const LocationScreen = () => {
               <TouchableOpacity
                 style={[styles.iconButton, { backgroundColor: theme.surface }]}
                 onPress={centerOnUser}
-                hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+                hitSlop={{ top: 25, bottom: 25, left: 25, right: 25 }}
               >
                 <Navigation2 size={22} color={theme.text} style={{ transform: [{ rotate: '45deg' }] }} />
               </TouchableOpacity>
@@ -318,7 +342,7 @@ export const LocationScreen = () => {
               <TouchableOpacity
                 style={[styles.iconButton, { backgroundColor: theme.surface }]}
                 onPress={() => setShowReachSafely(true)}
-                hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+                hitSlop={{ top: 25, bottom: 25, left: 25, right: 25 }}
               >
                 <Shield size={22} color={theme.primary} />
               </TouchableOpacity>
@@ -328,7 +352,7 @@ export const LocationScreen = () => {
               <TouchableOpacity
                 style={[styles.iconButton, { backgroundColor: theme.surface }]}
                 onPress={() => setShowPartnerInfo(true)}
-                hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+                hitSlop={{ top: 25, bottom: 25, left: 25, right: 25 }}
               >
                 <Heart size={22} color="#FF6B6B" fill="#FF6B6B" />
               </TouchableOpacity>
@@ -346,7 +370,7 @@ export const LocationScreen = () => {
                   </View>
                   <View style={styles.interceptTitleContainer}>
                     <Text style={[styles.interceptTitle, { color: theme.text }]}>
-                      Locating {currentUserProfile?.partnerNickname || partner?.displayName || 'Partner'}
+                      Locating {partnerName}
                     </Text>
                     <Text style={[styles.interceptSubtitle, { color: theme.textLight }]}>
                       Live path updated • Intercepting 🚀
@@ -378,33 +402,119 @@ export const LocationScreen = () => {
                 </View>
 
                 <TouchableOpacity 
-                  style={[styles.stopInterceptBtn, { backgroundColor: theme.border + '50' }]}
+                  style={[styles.actionBtn, { backgroundColor: theme.border + '50' }]}
                   onPress={() => setIsIntercepting(false)}
                 >
-                  <Text style={[styles.stopInterceptText, { color: theme.text }]}>Stop Intercept</Text>
+                  <Text style={[styles.actionBtnText, { color: theme.text }]}>Stop Intercept</Text>
                 </TouchableOpacity>
               </View>
-            ) : (
-              <View style={[styles.searchBarContainer, { backgroundColor: theme.surface }]}>
-                <MapPin size={20} color={theme.primary} />
-                <Text style={[styles.searchPlaceholder, { color: theme.textLight }]}>
-                  Find my {currentUserProfile?.partnerNickname || partner?.displayName || 'love'}...
-                </Text>
-                <Search size={20} color={theme.textLight} />
+            ) : partnerWalkSafe?.isActive ? (
+              <View style={[styles.statusCard, { backgroundColor: theme.surface }]}>
+                <View style={styles.statusHeader}>
+                  <View style={[styles.statusIcon, { backgroundColor: 'rgba(52, 199, 89, 0.1)' }]}>
+                    <Shield size={20} color="#34C759" />
+                  </View>
+                  <View style={styles.statusInfo}>
+                    <Text style={[styles.statusTitle, { color: theme.text }]}>
+                      {partnerName} is on a trip
+                    </Text>
+                    <Text style={[styles.statusSubtitle, { color: theme.textLight }]}>
+                      Heading to {partnerWalkSafe.destinationName}
+                    </Text>
+                  </View>
+                  <View style={styles.timeBadge}>
+                    <Clock size={12} color={theme.primary} />
+                    <Text style={[styles.timeText, { color: theme.primary }]}>
+                      {partnerWalkSafe.deadline ? Math.max(0, Math.round((partnerWalkSafe.deadline - Date.now()) / 60000)) : 0} min
+                    </Text>
+                  </View>
+                </View>
+                
+                <View style={[styles.progressBarContainer, { backgroundColor: theme.border + '30' }]}>
+                  <View style={[styles.progressBar, { 
+                    backgroundColor: '#34C759', 
+                    width: `${Math.min(100, Math.max(10, 100 - ((partnerWalkSafe.lastCheckDistance || 0) / 5000) * 100))}%` 
+                  }]} />
+                </View>
+
                 <TouchableOpacity 
-                  style={[styles.goButton, { backgroundColor: theme.primary }]}
+                  style={[styles.actionBtn, { backgroundColor: theme.primary }]}
                   onPress={() => {
                     setIsIntercepting(true);
                     zoomToPartner();
-                    if (Platform.OS !== 'web') {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                    }
                   }}
-                  hitSlop={{ top: 15, bottom: 15, left: 10, right: 10 }}
                 >
-                  <Navigation2 size={18} color="white" />
-                  <Text style={styles.goText}>Go</Text>
+                  <Navigation2 size={16} color="white" />
+                  <Text style={styles.actionBtnText}>Intercept {partnerName}</Text>
                 </TouchableOpacity>
+              </View>
+            ) : (
+              <View style={[styles.statusCard, { backgroundColor: theme.surface }]}>
+                <View style={styles.statusHeader}>
+                  <View style={[styles.statusIcon, { backgroundColor: 'rgba(107, 102, 255, 0.1)' }]}>
+                    <ShieldCheck size={20} color={theme.primary} />
+                  </View>
+                  <View style={styles.statusInfo}>
+                    <Text style={[styles.statusTitle, { color: theme.text }]}>
+                      {partnerName} is safe
+                    </Text>
+                    <Text style={[styles.statusSubtitle, { color: theme.textLight }]}>
+                      Last seen {new Date(partnerLocation?.timestamp || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </Text>
+                  </View>
+                  {partnerLocation?.batteryLevel !== undefined && (
+                    <View style={styles.batteryInfo}>
+                      <Text style={[styles.batteryText, { 
+                        color: partnerLocation.batteryLevel < 20 ? '#FF3B30' : theme.textLight 
+                      }]}>
+                        {partnerLocation.batteryLevel}%
+                      </Text>
+                      <View style={[styles.batteryIcon, { 
+                        borderColor: theme.textLight,
+                        backgroundColor: partnerLocation.batteryLevel < 20 ? '#FF3B30' : '#34C759'
+                      }]} />
+                    </View>
+                  )}
+                </View>
+
+                {selectedCoords ? (
+                  <View style={styles.tripActionContainer}>
+                    <TouchableOpacity 
+                      style={[styles.startTripBtn, { backgroundColor: theme.primary }]}
+                      onPress={() => {
+                        locationService.startWalkSafe(
+                          selectedLocationName || 'Selected Destination',
+                          selectedCoords.latitude,
+                          selectedCoords.longitude
+                        );
+                        setSelectedCoords(null);
+                        setSelectedLocationName(null);
+                      }}
+                    >
+                      <Shield size={18} color="white" />
+                      <Text style={styles.startTripText}>Start Walk Safe to {selectedLocationName || 'Destination'}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity 
+                      style={[styles.cancelTripBtn, { backgroundColor: theme.border + '50' }]}
+                      onPress={() => {
+                        setSelectedCoords(null);
+                        setSelectedLocationName(null);
+                      }}
+                    >
+                      <X size={18} color={theme.textLight} />
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <View style={styles.tripActionContainer}>
+                    <TouchableOpacity 
+                      style={[styles.startTripBtn, { backgroundColor: theme.primary }]}
+                      onPress={() => setShowSettings(true)}
+                    >
+                      <Navigation2 size={18} color="white" />
+                      <Text style={styles.startTripText}>Start a new trip</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
               </View>
             )}
           </View>
@@ -438,13 +548,15 @@ export const LocationScreen = () => {
               onPress={(data, details = null) => {
                 if (details && mapRef.current) {
                   const { lat, lng } = details.geometry.location;
+                  setSelectedCoords({ latitude: lat, longitude: lng });
+                  setSelectedLocationName(data.description.split(',')[0]);
+                  setIsSelectingLocation(false);
                   mapRef.current.animateToRegion({
                     latitude: lat,
                     longitude: lng,
-                    latitudeDelta: 0.005,
-                    longitudeDelta: 0.005,
+                    latitudeDelta: 0.01,
+                    longitudeDelta: 0.01,
                   }, 1000);
-                  setSelectedCoords({ latitude: lat, longitude: lng });
                 }
               }}
               fetchDetails={true}
@@ -619,7 +731,7 @@ const styles = StyleSheet.create({
     alignSelf: 'center'
   },
   interceptCard: {
-    padding: 16,
+    padding: 20,
     borderRadius: 24,
     width: SCREEN_WIDTH * 0.88,
     alignSelf: 'center',
@@ -643,6 +755,132 @@ const styles = StyleSheet.create({
   stopInterceptBtn: { height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
   stopInterceptText: { fontSize: 12, fontWeight: '700' },
   searchPlaceholder: { flex: 1, marginLeft: 12, fontSize: 16, fontWeight: '600' },
+  statusCard: {
+    padding: 16,
+    borderRadius: 24,
+    width: SCREEN_WIDTH * 0.9,
+    alignSelf: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 15,
+    elevation: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.03)',
+  },
+  statusHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  statusIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  statusInfo: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  statusTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  statusSubtitle: {
+    fontSize: 11,
+    marginTop: 2,
+  },
+  timeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 122, 255, 0.05)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  timeText: {
+    fontSize: 13,
+    fontWeight: '800',
+    marginLeft: 5,
+  },
+  batteryInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  batteryText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  batteryIcon: {
+    width: 14,
+    height: 8,
+    borderRadius: 1,
+    borderWidth: 1,
+  },
+  progressBarContainer: {
+    height: 6,
+    borderRadius: 3,
+    width: '100%',
+    marginBottom: 16,
+    overflow: 'hidden',
+  },
+  progressBar: {
+    height: '100%',
+    borderRadius: 3,
+  },
+  actionBtn: {
+    height: 44,
+    borderRadius: 15,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  actionBtnText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  searchBarLink: {
+    height: 44,
+    borderRadius: 15,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    gap: 10,
+  },
+  searchLinkText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  tripActionContainer: {
+    flexDirection: 'row',
+    gap: 10,
+    width: '100%',
+  },
+  startTripBtn: {
+    flex: 1,
+    height: 44,
+    borderRadius: 15,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  startTripText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  cancelTripBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 15,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   goButton: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 18, paddingVertical: 8, borderRadius: 20, marginLeft: 10 },
   goText: { color: 'white', fontWeight: 'bold', marginLeft: 6 },
   emergencyOverlay: { ...StyleSheet.absoluteFillObject, zIndex: 1000 },
@@ -654,6 +892,46 @@ const styles = StyleSheet.create({
   panelHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
   statusDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#FF3B30', marginRight: 10 },
   panelTitle: { fontSize: 18, fontWeight: '800', color: '#1a1a1a' },
+  aiInsightBox: {
+    padding: 14,
+    borderRadius: 16,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.03)',
+  },
+  aiHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  aiTitle: {
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 1,
+    marginLeft: 6,
+  },
+  aiSummary: {
+    fontSize: 13,
+    color: '#333',
+    lineHeight: 18,
+    fontWeight: '600',
+  },
+  aiSuggestion: {
+    marginTop: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+  },
+  aiSuggestionLabel: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: '#666',
+  },
+  aiSuggestionText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#007AFF',
+  },
   emergencyActions: { 
     flexDirection: 'row', 
     flexWrap: 'wrap', 

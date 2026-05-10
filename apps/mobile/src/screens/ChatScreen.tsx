@@ -203,7 +203,7 @@ export const ChatScreen = () => {
               style={styles.actionButton} 
               onPress={() => Alert.alert('More', 'More features coming soon!')}
               activeOpacity={0.7}
-              hitSlop={{ top: 20, bottom: 20, left: 15, right: 15 }}
+              hitSlop={{ top: 25, bottom: 25, left: 20, right: 20 }}
             >
               <Plus color={theme.textLight} size={24} />
             </TouchableOpacity>
@@ -220,7 +220,7 @@ export const ChatScreen = () => {
               <TouchableOpacity 
                 style={styles.innerIconButton}
                 onPress={handlePickMedia}
-                hitSlop={{ top: 15, bottom: 15, left: 15, right: 5 }}
+                hitSlop={{ top: 25, bottom: 25, left: 20, right: 15 }}
               >
                 <ImageIcon color={theme.textLight} size={20} />
               </TouchableOpacity>
@@ -235,7 +235,7 @@ export const ChatScreen = () => {
               onPress={handleSend}
               disabled={!message.trim()}
               activeOpacity={0.7}
-              hitSlop={{ top: 15, bottom: 15, left: 0, right: 15 }}
+              hitSlop={{ top: 20, bottom: 20, left: 10, right: 25 }}
             >
               <View pointerEvents="none">
                 <Send color="white" size={20} />
