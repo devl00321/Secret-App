@@ -4,7 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { FirebaseAuthTypes } from '@react-native-firebase/auth';
 import { authService } from '../services/authService';
 import { PartnerProfile } from '../services/userService';
-import { db } from '../services/firebase';
+import { db, doc, onSnapshot } from '../services/firebase';
 
 interface AuthState {
   user: FirebaseAuthTypes.User | null;
@@ -50,8 +50,8 @@ export const useAuthStore = create<AuthState>()(
       subscribeToPartner: (partnerId) => {
         if (!partnerId) return () => {};
         
-        const unsubscribe = db.collection('users').doc(partnerId).onSnapshot((snapshot) => {
-          if (snapshot.exists) {
+        const unsubscribe = onSnapshot(doc(db, 'users', partnerId), (snapshot) => {
+          if (snapshot.exists()) {
             const data = snapshot.data() as PartnerProfile;
             set((state) => ({
               partner: {

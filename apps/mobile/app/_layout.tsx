@@ -14,10 +14,13 @@ LogBox.ignoreLogs([
   'This method is deprecated (as well as all React Native Firebase namespaced API)',
 ]);
 import 'react-native-reanimated';
-import { auth, serverTimestamp } from '../src/services/firebase';
+import { authInstance, serverTimestamp, db, collection, doc, onSnapshot } from '../src/services/firebase';
 import { onAuthStateChanged } from '@react-native-firebase/auth';
-import firestore from '@react-native-firebase/firestore';
 import appCheck from '@react-native-firebase/app-check';
+import { useLocationStore } from '../src/store/useLocationStore';
+import { alertService } from '../src/services/alertService';
+import { notificationService } from '../src/services/notificationService';
+import { Vibration, Platform } from 'react-native';
 import { useAuthStore } from '../src/store/useAuthStore';
 import { userService } from '../src/services/userService';
 import { locationService } from '../src/services/locationService';
@@ -73,7 +76,7 @@ export default function RootLayout() {
   useEffect(() => {
     let userUnsubscribe: () => void = () => {};
 
-    const authUnsubscribe = onAuthStateChanged(auth(), async (firebaseUser) => {
+    const authUnsubscribe = onAuthStateChanged(authInstance, async (firebaseUser) => {
       // Always set the user state immediately to reflect current auth status
       setUser(firebaseUser);
       
@@ -92,7 +95,8 @@ export default function RootLayout() {
         await userService.createUserIfNotExists(firebaseUser);
         
         // Listen for real-time user document changes
-        userUnsubscribe = firestore().collection('users').doc(firebaseUser.uid).onSnapshot(async (snapshot) => {
+        const userDocRef = doc(db, 'users', firebaseUser.uid);
+        userUnsubscribe = onSnapshot(userDocRef, async (snapshot) => {
           if (snapshot.exists()) {
             const data = snapshot.data();
             
@@ -140,6 +144,7 @@ export default function RootLayout() {
     };
   }, [setCoupleId, setLoading, setPartner, setUser]);
 
+
   // 1.1 Global Emergency & Location Listeners
   useEffect(() => {
     if (!coupleId || !user) return;
@@ -151,31 +156,36 @@ export default function RootLayout() {
 
     const sosUnsubscribe = locationService.subscribeToCoupleSos(coupleId, user.uid);
     const pingUnsubscribe = locationService.subscribeToIncomingPings(user.uid, (ping) => {
-      // Global ping handling
-      import('../src/services/alertService').then(({ alertService }) => {
-        alertService.triggerHeartbeatHaptics();
-      });
-      import('../src/store/useLocationStore').then(({ useLocationStore }) => {
-        useLocationStore.getState().setIncomingPing(ping);
-        // Clear the visual ping after 15 seconds to match haptics
-        setTimeout(() => {
-          useLocationStore.getState().setIncomingPing(null);
-        }, 15000);
-      });
+      console.log('💓 PING RECEIVED ON IPHONE!');
+      
+      // Immediate vibration to cut through any lag
+      Vibration.vibrate([0, 50, 100, 50]); 
+      
+      // Global ping handling: Haptics + Notification
+      alertService.triggerHeartbeatHaptics();
+
+      const partnerName = useAuthStore.getState().currentUserProfile?.partnerNickname || 
+                         useAuthStore.getState().partner?.displayName || 
+                         'Your love';
+
+      notificationService.sendLocalNotification(
+        "Thinking of you ❤️",
+        `${partnerName} is thinking about you.`
+      );
+
+      useLocationStore.getState().setIncomingPing(ping);
+      // Clear the visual ping after 15 seconds to match haptics
+      setTimeout(() => {
+        useLocationStore.getState().setIncomingPing(null);
+      }, 15000);
     });
 
-    // PRESENCE HEARTBEAT (Update every 20s while active)
-    const updatePresence = async () => {
-      if (!user?.uid) return;
-      try {
-        await firestore().collection('users').doc(user.uid).set({
-          isOnline: true,
-          lastActive: serverTimestamp()
-        }, { merge: true });
-      } catch (e) {}
-    };
-    updatePresence();
-    const presenceInterval = setInterval(updatePresence, 20000);
+    // PRESENCE HEARTBEAT (Update every 20s while active to keep session alive)
+    const presenceInterval = setInterval(() => {
+      if (user?.uid) {
+        userService.updateUserPresence(user.uid, true);
+      }
+    }, 20000);
 
     let partnerUnsubscribe = () => {};
     if (currentUserProfile?.partnerId) {
@@ -197,7 +207,8 @@ export default function RootLayout() {
   useEffect(() => {
     if (!coupleId) return;
 
-    const unsubscribe = firestore().collection('couples').doc(coupleId).onSnapshot(
+    const coupleDocRef = doc(db, 'couples', coupleId);
+    const unsubscribe = onSnapshot(coupleDocRef,
       (snapshot) => {
         if (snapshot && snapshot.exists()) {
           const data = snapshot.data();
@@ -253,16 +264,21 @@ export default function RootLayout() {
     }
   }, [user, coupleId, currentUserProfile?.profileSetupComplete, isReady, segments, router]);
 
-  // 3. Presence Tracking
+  // 3. Presence Tracking (Immediate Signal)
   useEffect(() => {
     if (!user?.uid) return;
 
+    // Set online IMMEDIATELY on mount
+    void userService.updateUserPresence(user.uid, true);
+
     const subscription = AppState.addEventListener('change', (nextAppState) => {
+      // Set online/offline based on AppState
       void userService.updateUserPresence(user.uid, nextAppState === 'active');
     });
 
     return () => {
       subscription.remove();
+      // Set offline on cleanup/unmount
       void userService.updateUserPresence(user.uid, false);
     };
   }, [user?.uid]);

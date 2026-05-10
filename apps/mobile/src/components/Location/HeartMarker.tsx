@@ -39,9 +39,10 @@ export const HeartMarker = React.memo(({ type, initial, batteryLevel, color: ove
 const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
-    justifyContent: 'center',
-    width: 60, // Fixed size to prevent layout shifts
-    height: 70,
+    justifyContent: 'flex-end',
+    width: 90, 
+    height: 90,
+    paddingBottom: 10,
   },
   bubble: {
     width: 44,

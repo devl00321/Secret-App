@@ -10,13 +10,22 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../theme';
 import { useAuthStore } from '../store/useAuthStore';
+import { useLocationStore } from '../store/useLocationStore';
+import { useChatStore } from '../store/chat';
+import { withRepeat, withSequence, withTiming, interpolateColor } from 'react-native-reanimated';
 
 
 export const CustomTabBar = ({ state, descriptors, navigation }: BottomTabBarProps) => {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const theme = useTheme();
-  const { currentUserProfile } = useAuthStore();
+  const { user, currentUserProfile } = useAuthStore();
+  const { activeSos, partnerTrip, partnerWalkSafe } = useLocationStore();
+  const { messages } = useChatStore();
+
+  const unreadCount = messages.filter(m => m.senderId !== user?.uid && !m.isRead).length;
+  const isSosActive = !!activeSos?.isActive;
+  const isPartnerOnTrip = !!(partnerTrip?.isActive || partnerWalkSafe?.isActive);
 
   // Gyroscope tracking for reflection
   const tiltX = useSharedValue(0);
@@ -81,6 +90,7 @@ export const CustomTabBar = ({ state, descriptors, navigation }: BottomTabBarPro
   }));
 
   const indicatorColor = useDerivedValue(() => {
+    if (isSosActive) return 'transparent';
     const isTimeline = state.routes[state.index].name === 'timeline';
     const isFemale = currentUserProfile?.gender === 'Female';
     return (isTimeline || isFemale) ? theme.heartPink : theme.primary;
@@ -88,11 +98,27 @@ export const CustomTabBar = ({ state, descriptors, navigation }: BottomTabBarPro
 
   const getIcon = (name: string, color: string) => {
     const size = 20;
+    const isFocused = state.routes[state.index].name === name;
+
     switch (name) {
-      case 'index': return <Home color={color} size={size} />;
-      case 'location': return <MapPin color={color} size={size} />;
-      case 'safety': return <Shield color={color} size={size} />;
-      case 'timeline': return <Heart color={color === theme.primary ? theme.heartPink : color} size={size} fill={color === theme.primary ? theme.heartPink : 'transparent'} />;
+      case 'index': 
+        return (
+          <View>
+            <Home color={color} size={size} />
+            {unreadCount > 0 && <GlowBadge color={theme.primary} />}
+          </View>
+        );
+      case 'location': 
+        return <MapPin color={color} size={size} />;
+      case 'safety': 
+        return <Shield color={isSosActive ? '#FF3B30' : color} size={size} />;
+      case 'timeline': 
+        return (
+          <View>
+            <Heart color={color === theme.primary ? theme.heartPink : color} size={size} fill={color === theme.primary ? theme.heartPink : 'transparent'} />
+            {/* Timeline glow could be added here based on a "new memory" state */}
+          </View>
+        );
       default: return <Home color={color} size={size} />;
     }
   };
@@ -159,6 +185,7 @@ export const CustomTabBar = ({ state, descriptors, navigation }: BottomTabBarPro
               <Animated.View style={[
                 styles.scatterGlow, 
                 { shadowColor: useDerivedValue(() => {
+                  if (isSosActive) return 'transparent';
                   const isTimeline = state.routes[state.index].name === 'timeline';
                   const isFemale = currentUserProfile?.gender === 'Female';
                   return (isTimeline || isFemale) ? theme.heartPink : theme.primary;
@@ -280,6 +307,13 @@ export const CustomTabBar = ({ state, descriptors, navigation }: BottomTabBarPro
   );
 };
 
+
+const GlowBadge = ({ color }: { color: string }) => {
+  return (
+    <View style={[styles.glowBadge, { backgroundColor: color, shadowColor: color }]} />
+  );
+};
+
 const TabItem = ({
   isFocused,
   onPress,
@@ -317,7 +351,7 @@ const TabItem = ({
       onPress={onPress}
       style={styles.tabItem}
       activeOpacity={0.7}
-      hitSlop={{ top: 20, bottom: 20, left: 10, right: 10 }}
+      hitSlop={{ top: 30, bottom: 30, left: 20, right: 20 }}
     >
       <Animated.View style={[styles.iconWrapper, iconStyle]}>
         {icon}
@@ -480,5 +514,21 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(0, 0, 0, 0.05)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
+  },
+  iconContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  glowBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -4,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 4,
+    elevation: 5,
   },
 });

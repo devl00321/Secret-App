@@ -40,9 +40,16 @@ export default function SetupProfileScreen() {
       return;
     }
 
-    if (dob && !/^\d{2}\/\d{2}\/\d{4}$/.test(dob)) {
-      Alert.alert('Invalid Format', 'Please enter your DOB in DD/MM/YYYY format.');
-      return;
+    if (dob) {
+      if (!/^\d{2}\/\d{2}\/\d{4}$/.test(dob)) {
+        Alert.alert('Invalid Format', 'Please enter your DOB in DD/MM/YYYY format.');
+        return;
+      }
+      const [d, m, y] = dob.split('/').map(Number);
+      if (d > 31 || m > 12 || y < 1900 || y > new Date().getFullYear()) {
+        Alert.alert('Invalid Date', 'Please enter a realistic date of birth.');
+        return;
+      }
     }
 
     if (!user?.uid) return;
@@ -54,7 +61,7 @@ export default function SetupProfileScreen() {
       const updates = {
         displayName: name.trim(),
         phoneNumber: phoneNumber.trim().startsWith('+') ? phoneNumber.trim() : `+91${phoneNumber.trim()}`,
-        gender: gender.trim(),
+        gender: gender.trim() as 'Male' | 'Female' | 'Non-binary' | 'Prefer not to say' | '',
         dob: dob.trim(),
         profileSetupComplete: true,
       };
@@ -181,8 +188,24 @@ export default function SetupProfileScreen() {
                   maxLength={10}
                   value={dob}
                   onChangeText={(text) => {
-                    // Basic auto-formatting for DD/MM/YYYY
                     let cleaned = text.replace(/[^\d/]/g, '');
+                    
+                    // Split into parts to validate numbers in real-time
+                    const parts = cleaned.split('/');
+                    
+                    // Validate Day (Max 31)
+                    if (parts[0] && parts[0].length === 2 && parseInt(parts[0]) > 31) {
+                      parts[0] = '31';
+                    }
+                    
+                    // Validate Month (Max 12)
+                    if (parts[1] && parts[1].length === 2 && parseInt(parts[1]) > 12) {
+                      parts[1] = '12';
+                    }
+                    
+                    // Re-join for formatting logic
+                    cleaned = parts.join('/');
+
                     if (cleaned.length === 2 && dob.length === 1 && !cleaned.includes('/')) {
                       cleaned += '/';
                     } else if (cleaned.length === 5 && dob.length === 4 && cleaned.split('/').length === 2) {

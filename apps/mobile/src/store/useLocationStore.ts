@@ -70,6 +70,7 @@ interface LocationState {
   lastCompletedPath: { latitude: number; longitude: number }[] | null;
   lastCompletedTime: number | null;
   incomingPing: { from: string; timestamp: number; type: string } | null;
+  aiInsight: { summary: string; riskLevel: string; suggestion: string } | null;
 
   // Actions
   setUserLocation: (location: Location.LocationObject | null) => void;
@@ -93,6 +94,7 @@ interface LocationState {
   endWalkSafe: (status: 'arrived' | 'cancelled') => void;
   extendWalkSafe: (extraMinutes: number) => void;
   setIncomingPing: (ping: LocationState['incomingPing']) => void;
+  setAiInsight: (insight: LocationState['aiInsight']) => void;
 }
 
 export const useLocationStore = create<LocationState>()(
@@ -118,6 +120,7 @@ export const useLocationStore = create<LocationState>()(
       partnerLastCompletedPath: null,
       partnerLastCompletedTime: null,
       incomingPing: null,
+      aiInsight: null,
 
       setUserLocation: (userLocation) => set({ userLocation }),
       setPartnerLocation: (partnerLocation) => set({ partnerLocation }),
@@ -133,6 +136,7 @@ export const useLocationStore = create<LocationState>()(
       setSirenMuted: (isSirenMuted) => set({ isSirenMuted }),
       setSavedPlaces: (savedPlaces) => set({ savedPlaces }),
       setIncomingPing: (incomingPing) => set({ incomingPing }),
+      setAiInsight: (aiInsight) => set({ aiInsight }),
 
       startWalkSafe: (destination, durationMinutes) => {
         const now = Date.now();

@@ -1,6 +1,5 @@
-import firestore from '@react-native-firebase/firestore';
 import * as Crypto from 'expo-crypto';
-import { db, serverTimestamp } from './firebase';
+import { db, serverTimestamp, doc, setDoc, FirestoreTimestamp, runTransaction } from './firebase';
 
 const INVITE_CODE_LENGTH = 6;
 const INVITE_EXPIRY_MINUTES = 10;
@@ -22,18 +21,18 @@ export const pairingService = {
 
     try {
       // Direct write with a 5-second timeout
-      const codeRef = db.collection('inviteCodes').doc(code);
+      const codeRef = doc(db, 'inviteCodes', code);
       
       const timeoutPromise = new Promise((_, reject) => 
         setTimeout(() => reject(new Error('Connection timed out. Please check your internet.')), 5000)
       );
 
       await Promise.race([
-        codeRef.set({
+        setDoc(codeRef, {
           code,
           createdBy: userId,
           createdAt: serverTimestamp(),
-          expiresAt: firestore.Timestamp.fromDate(expiryDate),
+          expiresAt: FirestoreTimestamp.fromDate(expiryDate),
           isUsed: false
         }),
         timeoutPromise
@@ -56,8 +55,8 @@ export const pairingService = {
       throw new Error('Please enter a valid 6-digit code.');
     }
 
-    return await db.runTransaction(async (transaction) => {
-      const codeRef = db.collection('inviteCodes').doc(normalizedCode);
+    return await runTransaction(db, async (transaction) => {
+      const codeRef = doc(db, 'inviteCodes', normalizedCode);
       const codeSnap = await transaction.get(codeRef);
 
       if (!codeSnap.exists) {
@@ -79,8 +78,8 @@ export const pairingService = {
         throw new Error('You cannot join your own code.');
       }
 
-      const currentUserRef = db.collection('users').doc(currentUserId);
-      const creatorUserRef = db.collection('users').doc(data.createdBy);
+      const currentUserRef = doc(db, 'users', currentUserId);
+      const creatorUserRef = doc(db, 'users', data.createdBy);
       const currentUserSnap = await transaction.get(currentUserRef);
       const creatorUserSnap = await transaction.get(creatorUserRef);
 
@@ -93,7 +92,7 @@ export const pairingService = {
       }
 
       const coupleId = [data.createdBy, currentUserId].sort().join('_');
-      const coupleRef = db.collection('couples').doc(coupleId);
+      const coupleRef = doc(db, 'couples', coupleId);
 
       transaction.set(coupleRef, {
         id: coupleId,

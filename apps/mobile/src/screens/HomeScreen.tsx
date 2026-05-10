@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, ScrollView, TouchableOpacity, Platform, TextInput, TouchableWithoutFeedback, ImageBackground, Image } from 'react-native';
+import { StyleSheet, View, Text, ScrollView, TouchableOpacity, Platform, TextInput, TouchableWithoutFeedback, ImageBackground } from 'react-native';
+import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuthStore } from '../store/useAuthStore';
 import { Card } from '../components/Card';
@@ -28,6 +29,7 @@ import Animated, {
 import { useTheme } from '../theme';
 import { LinearGradient } from 'expo-linear-gradient';
 import { userService } from '../services/userService';
+import { useChatStore } from '../store/chat';
 import { useLocationStore } from '../store/useLocationStore';
 
 const formatLastSeen = (lastActive: any) => {
@@ -49,8 +51,11 @@ const AnimatedLinearGradient = Animated.createAnimatedComponent(LinearGradient);
 export const HomeScreen = () => {
   const theme = useTheme();
   const { user, partner, currentUserProfile, setCurrentUserProfile, coupleId, subscribeToPartner } = useAuthStore();
+  const { messages } = useChatStore();
   const { isTripActive, incomingPing, setIncomingPing } = useLocationStore();
   const router = useRouter();
+
+  const unreadCount = messages.filter(m => m.senderId !== user?.uid && !m.isRead).length;
 
   // Subscribe to partner presence
   useEffect(() => {
@@ -272,9 +277,21 @@ export const HomeScreen = () => {
               <Text style={[styles.dateText, { color: theme.textLight }]}> Everything is synced</Text>
             </View>
           </View>
-          <TouchableOpacity onPress={() => router.push('/(app)/profile')} activeOpacity={0.7}>
+          <TouchableOpacity 
+            onPress={() => router.push('/(app)/profile')} 
+            activeOpacity={0.7}
+            hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+          >
             <View style={[styles.avatarMini, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-              <User size={20} color={theme.primary} />
+              {currentUserProfile?.photoURL ? (
+                <Image 
+                  source={{ uri: currentUserProfile.photoURL }} 
+                  style={styles.avatarMiniImage}
+                  contentFit="cover"
+                />
+              ) : (
+                <User size={20} color={theme.primary} />
+              )}
             </View>
           </TouchableOpacity>
         </Animated.View>
@@ -296,20 +313,31 @@ export const HomeScreen = () => {
                 end={{ x: 1, y: 1 }}
               >
                 <View style={styles.cardHeader}>
-                  <View style={styles.avatarLarge}>
-                    <Heart size={32} color={theme.heartPink} fill={theme.heartPink} />
+                  <View style={styles.avatarContainerLarge}>
+                    <View style={[styles.avatarLarge, { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
+                      {partner?.photoURL ? (
+                        <Image 
+                          source={{ uri: partner.photoURL }} 
+                          style={styles.avatarLargeImage}
+                          contentFit="cover"
+                        />
+                      ) : (
+                        <Heart size={32} color="white" fill="white" />
+                      )}
+                    </View>
                     <View style={[styles.statusIndicator, { backgroundColor: partnerStatus === 'online' ? theme.success : '#AAA' }]} />
                   </View>
                   
                   <View style={styles.infoContainer}>
                     <View style={styles.nameRow}>
-                      <Text style={styles.partnerName}>{partnerName}</Text>
+                      <Text style={styles.partnerName} numberOfLines={1}>{partnerName}</Text>
                       <TouchableOpacity 
                         style={styles.editIconBtn}
                         onPress={() => {
                           setNewNickname(partnerName);
                           setNicknameModalVisible(true);
                         }}
+                        hitSlop={{ top: 25, bottom: 25, left: 25, right: 25 }}
                       >
                         <Edit2 size={14} color="rgba(255,255,255,0.7)" />
                       </TouchableOpacity>
@@ -323,6 +351,11 @@ export const HomeScreen = () => {
                   
                   <View style={styles.chatIconCircle}>
                     <MessageCircle size={22} color="white" />
+                    {unreadCount > 0 && (
+                      <View style={[styles.unreadBadge, { backgroundColor: theme.heartPink }]}>
+                        <Text style={styles.unreadCountText}>{unreadCount}</Text>
+                      </View>
+                    )}
                   </View>
                 </View>
 
@@ -520,7 +553,10 @@ export const HomeScreen = () => {
           <View style={[styles.modalContent, { backgroundColor: theme.background, borderColor: theme.border }]}>
             <View style={styles.modalHeader}>
               <Text style={[styles.modalTitle, { color: theme.text }]}>Set Nickname</Text>
-              <TouchableOpacity onPress={() => setNicknameModalVisible(false)}>
+              <TouchableOpacity 
+                onPress={() => setNicknameModalVisible(false)}
+                hitSlop={{ top: 25, bottom: 25, left: 25, right: 25 }}
+              >
                 <X size={24} color={theme.textLight} />
               </TouchableOpacity>
             </View>
@@ -558,7 +594,10 @@ export const HomeScreen = () => {
           <View style={[styles.modalContent, { backgroundColor: theme.background, borderColor: theme.border, minHeight: 300 }]}>
             <View style={styles.modalHeader}>
               <Text style={[styles.modalTitle, { color: theme.text }]}>Our Anniversary</Text>
-              <TouchableOpacity onPress={() => setAnniversaryModalVisible(false)}>
+              <TouchableOpacity 
+                onPress={() => setAnniversaryModalVisible(false)}
+                hitSlop={{ top: 25, bottom: 25, left: 25, right: 25 }}
+              >
                 <X size={24} color={theme.textLight} />
               </TouchableOpacity>
             </View>
@@ -704,6 +743,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1.5,
+    overflow: 'hidden',
+  },
+  avatarMiniImage: {
+    width: '100%',
+    height: '100%',
   },
   sectionTitle: {
     fontSize: 13,
@@ -728,14 +772,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
+  avatarContainerLarge: {
+    width: 64,
+    height: 64,
+    marginRight: 16,
+    position: 'relative',
+  },
   avatarLarge: {
     width: 64,
     height: 64,
     borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 16,
-    position: 'relative',
+    overflow: 'hidden',
+  },
+  avatarLargeImage: {
+    width: '100%',
+    height: '100%',
   },
   statusIndicator: {
     position: 'absolute',
@@ -759,6 +812,7 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     color: 'white',
     letterSpacing: -0.5,
+    flexShrink: 1,
   },
   editIconBtn: {
     padding: 6,
@@ -787,6 +841,25 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.2)',
     alignItems: 'center',
     justifyContent: 'center',
+    position: 'relative',
+  },
+  unreadBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: 'white',
+    paddingHorizontal: 4,
+  },
+  unreadCountText: {
+    color: 'white',
+    fontSize: 10,
+    fontWeight: '900',
   },
   messagePreview: {
     marginTop: 20,

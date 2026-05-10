@@ -1,4 +1,4 @@
-import { db, auth } from './firebase';
+import { db, authInstance, doc, updateDoc, collection, getDocs, getDoc, deleteDoc, writeBatch } from './firebase';
 import { useAuthStore } from '../store/useAuthStore';
 import { useLocationStore } from '../store/useLocationStore';
 
@@ -7,10 +7,10 @@ export const privacyService = {
    * Syncs online status to Firestore
    */
   updateOnlineStatus: async (isOnline: boolean) => {
-    const userId = auth().currentUser?.uid;
+    const userId = authInstance.currentUser?.uid;
     if (!userId) return;
     try {
-      await db.collection('users').doc(userId).update({ isOnline });
+      await updateDoc(doc(db, 'users', userId), { isOnline });
     } catch (err) {
       console.error('[PrivacyService] Failed to update online status:', err);
     }
@@ -20,10 +20,10 @@ export const privacyService = {
    * Syncs location privacy settings to Firestore
    */
   updateLocationPrivacy: async (isSharing: boolean, duration: string) => {
-    const userId = auth().currentUser?.uid;
+    const userId = authInstance.currentUser?.uid;
     if (!userId) return;
     try {
-      await db.collection('users').doc(userId).update({
+      await updateDoc(doc(db, 'users', userId), {
         isSharingLocation: isSharing,
         sharingDuration: duration
       });
@@ -37,12 +37,12 @@ export const privacyService = {
    */
   clearChatHistory: async (coupleId: string) => {
     try {
-      const messagesRef = db.collection('couples').doc(coupleId).collection('messages');
-      const snapshot = await messagesRef.get();
+      const messagesRef = collection(db, 'couples', coupleId, 'messages');
+      const snapshot = await getDocs(messagesRef);
       
-      const batch = db.batch();
-      snapshot.docs.forEach((doc) => {
-        batch.delete(doc.ref);
+      const batch = writeBatch(db);
+      snapshot.docs.forEach((msgDoc) => {
+        batch.delete(msgDoc.ref);
       });
       
       await batch.commit();
@@ -57,7 +57,7 @@ export const privacyService = {
    * Permanently deletes the user account and cleanup relations
    */
   deleteAccount: async () => {
-    const user = auth().currentUser;
+    const user = authInstance.currentUser;
     const { coupleId } = useAuthStore.getState();
     
     if (!user) return false;
@@ -67,24 +67,24 @@ export const privacyService = {
 
       // 1. Remove from Couple
       if (coupleId) {
-        const coupleRef = db.collection('couples').doc(coupleId);
-        const coupleDoc = await coupleRef.get();
-        if (coupleDoc.exists) {
+        const coupleRef = doc(db, 'couples', coupleId);
+        const coupleDoc = await getDoc(coupleRef);
+        if (coupleDoc.exists()) {
           const data = coupleDoc.data();
           const remainingUsers = data?.users?.filter((id: string) => id !== userId) || [];
           
           if (remainingUsers.length === 0) {
             // Delete entire couple if no one left
-            await coupleRef.delete();
+            await deleteDoc(coupleRef);
           } else {
             // Update couple to remove this user
-            await coupleRef.update({ users: remainingUsers });
+            await updateDoc(coupleRef, { users: remainingUsers });
           }
         }
       }
 
       // 2. Delete User Profile
-      await db.collection('users').doc(userId).delete();
+      await deleteDoc(doc(db, 'users', userId));
 
       // 3. Delete Auth User
       await user.delete();

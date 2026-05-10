@@ -80,7 +80,7 @@ export const AddPlaceModal = ({ visible, onClose, onSave }: AddPlaceModalProps) 
                 <TouchableOpacity 
                   onPress={onClose}
                   style={styles.closeBtn}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
                 >
                   <X size={24} color={theme.textLight} />
                 </TouchableOpacity>

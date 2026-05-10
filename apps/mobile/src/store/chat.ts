@@ -1,8 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import firestore from '@react-native-firebase/firestore';
-import { db, serverTimestamp, storageInstance } from '../services/firebase';
+import { db, serverTimestamp, storageInstance, collection, doc, addDoc, deleteDoc, updateDoc, onSnapshot, query, orderBy, limit, where, getDocs, writeBatch } from '../services/firebase';
 import { encryptionService } from '../services/encryptionService';
 import * as FileSystem from 'expo-file-system/legacy';
 
@@ -54,11 +53,13 @@ export const useChatStore = create<ChatState>()(
       subscribeToMessages: (coupleId, currentUserId) => {
         set({ loading: true });
         
-        const q = db.collection('couples').doc(coupleId).collection('messages')
-          .orderBy('createdAt', 'desc')
-          .limit(50);
+        const q = query(
+          collection(db, 'couples', coupleId, 'messages'),
+          orderBy('createdAt', 'desc'),
+          limit(50)
+        );
 
-        const unsubscribe = q.onSnapshot((snapshot) => {
+        const unsubscribe = onSnapshot(q, (snapshot) => {
           if (!snapshot) return;
 
           set((state) => {
@@ -72,7 +73,7 @@ export const useChatStore = create<ChatState>()(
               if (change.type === 'added') {
                 // Mark as delivered if from partner (Receiving end)
                 if (data.senderId !== currentUserId && !data.isDelivered) {
-                  change.doc.ref.update({ isDelivered: true });
+                  updateDoc(change.doc.ref, { isDelivered: true });
                 }
 
                 // Decrypt and add if not already present
@@ -135,7 +136,7 @@ export const useChatStore = create<ChatState>()(
                   const storagePath = data.storagePath;
                   setTimeout(async () => {
                     try {
-                      await db.collection('couples').doc(coupleId).collection('messages').doc(id).delete();
+                      await deleteDoc(doc(db, 'couples', coupleId, 'messages', id));
                       if (storagePath) {
                         await storageInstance.ref(`chat_media/${storagePath}`).delete();
                       }
@@ -213,7 +214,7 @@ export const useChatStore = create<ChatState>()(
             async () => {
               const downloadURL = await storageRef.getDownloadURL();
               
-              await db.collection('couples').doc(coupleId).collection('messages').add({
+              await addDoc(collection(db, 'couples', coupleId, 'messages'), {
                 text: '',
                 senderId,
                 createdAt: serverTimestamp(),
@@ -254,7 +255,7 @@ export const useChatStore = create<ChatState>()(
       sendMessage: async (text, senderId, coupleId, imageUrl) => {
         try {
           const encryptedText = encryptionService.encrypt(text, coupleId);
-          await db.collection('couples').doc(coupleId).collection('messages').add({
+          await addDoc(collection(db, 'couples', coupleId, 'messages'), {
             text: encryptedText,
             senderId,
             imageUrl: imageUrl || null,
@@ -273,7 +274,7 @@ export const useChatStore = create<ChatState>()(
         }));
 
         try {
-          await db.collection('couples').doc(coupleId).collection('messages').doc(messageId).delete();
+          await deleteDoc(doc(db, 'couples', coupleId, 'messages', messageId));
         } catch (error) {
           console.error('Error deleting message from cloud:', error);
         }
@@ -288,15 +289,17 @@ export const useChatStore = create<ChatState>()(
 
       markMessagesAsRead: async (coupleId, currentUserId) => {
         try {
-          const messagesRef = db.collection('couples').doc(coupleId).collection('messages');
-          const snapshot = await messagesRef
-            .where('senderId', '!=', currentUserId)
-            .where('isRead', '==', false)
-            .get();
+          const messagesRef = collection(db, 'couples', coupleId, 'messages');
+          const q = query(
+            messagesRef,
+            where('senderId', '!=', currentUserId),
+            where('isRead', '==', false)
+          );
+          const snapshot = await getDocs(q);
 
           if (snapshot.empty) return;
 
-          const batch = db.batch();
+          const batch = writeBatch(db);
           snapshot.docs.forEach((msgDoc) => {
             batch.update(msgDoc.ref, { isRead: true });
           });

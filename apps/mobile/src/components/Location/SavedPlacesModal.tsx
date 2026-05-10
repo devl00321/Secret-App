@@ -107,7 +107,10 @@ export const SavedPlacesModal = ({ visible, onClose, onSelectOnMap, initialLocat
         >
           <View style={styles.header}>
             <Text style={[styles.title, { color: theme.text }]}>Safe Places 📍</Text>
-            <TouchableOpacity onPress={onClose}>
+            <TouchableOpacity 
+              onPress={onClose}
+              hitSlop={{ top: 25, bottom: 25, left: 25, right: 25 }}
+            >
               <X size={24} color={theme.textLight} />
             </TouchableOpacity>
           </View>

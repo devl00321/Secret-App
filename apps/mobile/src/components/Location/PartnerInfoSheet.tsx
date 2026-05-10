@@ -255,7 +255,7 @@ export const PartnerInfoSheet = ({
                 <TouchableOpacity 
                   onPress={() => snapTo(SNAP_BOTTOM)} 
                   style={[styles.closeBtn, { backgroundColor: theme.surface }]}
-                  hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+                  hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
                 >
                   <X color={theme.text} size={20} />
                 </TouchableOpacity>
