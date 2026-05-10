@@ -57,6 +57,7 @@ export const useAuthStore = create<AuthState>()(
               partner: {
                 ...state.partner,
                 ...data,
+                id: partnerId, // ✅ Always inject the Firestore doc ID
                 isOnline: Boolean(data.isOnline),
                 lastMessage: state.partner?.lastMessage || 'Click to start chatting! ❤️',
               }

@@ -16,7 +16,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Heart, Copy, Share2, ArrowRight, RefreshCw, Smartphone } from 'lucide-react-native';
+import { Heart, Copy, Share2, ArrowRight, RefreshCw, Smartphone, LogOut } from 'lucide-react-native';
+import { authInstance, signOut } from '../../src/services/firebase';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import Animated, { FadeIn, FadeInDown, SlideInRight } from 'react-native-reanimated';
@@ -116,6 +117,29 @@ export default function PairingScreen() {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const handleSignOut = () => {
+    Alert.alert(
+      'Restart Signup?',
+      'Would you like to sign out and start over?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Sign Out', 
+          style: 'destructive', 
+          onPress: async () => {
+            try {
+              if (authInstance.currentUser) {
+                await signOut(authInstance);
+              }
+            } catch (err) {
+              console.error('Sign out error:', err);
+            }
+          } 
+        }
+      ]
+    );
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <StatusBar barStyle="light-content" />
@@ -134,7 +158,15 @@ export default function PairingScreen() {
             start={{ x: 0, y: 0 }}
             end={{ x: 0, y: 1 }}
           />
-          <SafeAreaView>
+          <SafeAreaView style={styles.safeHeader}>
+            <TouchableOpacity 
+              style={styles.backBtn} 
+              onPress={handleSignOut}
+            >
+              <LogOut size={20} color="white" />
+              <Text style={styles.backBtnText}>Exit</Text>
+            </TouchableOpacity>
+            
             <Animated.View entering={FadeIn.duration(800)} style={styles.headerContent}>
               <View style={styles.logoBadge}>
                 <Heart size={32} color={theme.primary} fill={theme.primary} />
@@ -246,9 +278,26 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 40,
     borderBottomRightRadius: 40,
   },
+  safeHeader: {
+    flex: 1,
+  },
+  backBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    gap: 8,
+    opacity: 0.9,
+  },
+  backBtnText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '700',
+  },
   headerContent: {
     alignItems: 'center',
     paddingHorizontal: 30,
+    marginTop: 10,
   },
   logoBadge: {
     width: 64,

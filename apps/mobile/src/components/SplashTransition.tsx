@@ -98,7 +98,7 @@ export const SplashTransition: React.FC<SplashTransitionProps> = ({ onAnimationC
 
     containerScale.value = withDelay(
       exitDelay,
-      withTiming(15, { duration: 500, easing: Easing.in(Easing.cubic) })
+      withTiming(1.2, { duration: 400, easing: Easing.in(Easing.cubic) }) // Reduced scale from 15 to 1.2 to fix frame drops
     );
     
     containerOpacity.value = withDelay(
@@ -186,20 +186,13 @@ const styles = StyleSheet.create({
     marginTop: 20, // Shifted up 10px from before
   },
   logo: {
-    width: 160, // Increased size
-    height: 160, // Increased size
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.3,
-    shadowRadius: 20,
+    width: 160, 
+    height: 160, 
   },
   brandText: {
     fontSize: 48,
     fontWeight: '800',
     color: '#FFFFFF',
     letterSpacing: 2,
-    textShadowColor: 'rgba(0,0,0,0.3)',
-    textShadowOffset: { width: 0, height: 4 },
-    textShadowRadius: 8,
   },
 });

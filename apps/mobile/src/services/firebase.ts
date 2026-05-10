@@ -1,5 +1,5 @@
 import 'react-native-get-random-values';
-import auth, { getAuth, FirebaseAuthTypes } from '@react-native-firebase/auth';
+import auth, { getAuth, signOut, FirebaseAuthTypes } from '@react-native-firebase/auth';
 import firestore, {
   collection,
   doc,
@@ -53,7 +53,7 @@ export {
 };
 
 // Re-export auth singleton and provider
-export { authInstance, storageInstance };
+export { authInstance, signOut, storageInstance };
 export const GoogleAuthProvider = auth.GoogleAuthProvider;
 export type { FirebaseAuthTypes };
 

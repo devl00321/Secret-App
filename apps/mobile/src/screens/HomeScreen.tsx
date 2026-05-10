@@ -253,7 +253,7 @@ export const HomeScreen = () => {
         >
           <LinearGradient
             colors={[theme.primary + '20', 'transparent']}
-            style={StyleSheet.absoluteFill}
+            style={[StyleSheet.absoluteFill, { borderRadius: 25 }]}
             start={{ x: 0, y: 0 }}
             end={{ x: 0, y: 1 }}
           />

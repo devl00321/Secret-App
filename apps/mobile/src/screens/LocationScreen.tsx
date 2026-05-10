@@ -66,7 +66,7 @@ export const LocationScreen = () => {
     partnerLastCompletedPath,
     partnerLastCompletedTime,
     incomingPing,
-    aiInsight
+    safetyInsight
   } = useLocationStore();
 
   const [showSettings, setShowSettings] = useState(false);
@@ -159,8 +159,14 @@ export const LocationScreen = () => {
   };
 
   const handlePing = async () => {
-    if (partner?.id) {
-      await locationService.sendPing(partner.id);
+    // Read directly from store state at call time — most reliable approach
+    const storeState = useAuthStore.getState();
+    const partnerId = storeState.currentUserProfile?.partnerId || storeState.partner?.id;
+    console.log('[LocationScreen] handlePing. partnerId:', partnerId);
+    if (partnerId) {
+      await locationService.sendPing(partnerId);
+    } else {
+      console.error('[LocationScreen] Cannot send ping: no partner ID found!');
     }
   };
 
@@ -240,27 +246,25 @@ export const LocationScreen = () => {
                 <View style={styles.statusDot} />
                 <Text style={styles.panelTitle}>Emergency Response</Text>
               </View>
-
-              {aiInsight && (
+              {safetyInsight && (
                 <View style={[
                   styles.aiInsightBox, 
-                  { backgroundColor: aiInsight.riskLevel === 'high' ? 'rgba(255, 59, 48, 0.05)' : 'rgba(0, 122, 255, 0.05)' }
+                  { backgroundColor: safetyInsight.riskLevel === 'high' ? 'rgba(255, 59, 48, 0.05)' : 'rgba(0, 122, 255, 0.05)' }
                 ]}>
                   <View style={styles.aiHeader}>
-                    <Shield size={14} color={aiInsight.riskLevel === 'high' ? '#FF3B30' : '#007AFF'} />
+                    <Shield size={14} color={safetyInsight.riskLevel === 'high' ? '#FF3B30' : '#007AFF'} />
                     <Text style={[
                       styles.aiTitle, 
-                      { color: aiInsight.riskLevel === 'high' ? '#FF3B30' : '#007AFF' }
+                      { color: safetyInsight.riskLevel === 'high' ? '#FF3B30' : '#007AFF' }
                     ]}>SAFETY GUARD INSIGHT</Text>
                   </View>
-                  <Text style={styles.aiSummary}>{aiInsight.summary}</Text>
+                  <Text style={styles.aiSummary}>{safetyInsight.summary}</Text>
                   <View style={styles.aiSuggestion}>
                     <Text style={styles.aiSuggestionLabel}>SUGGESTION: </Text>
-                    <Text style={styles.aiSuggestionText}>{aiInsight.suggestion}</Text>
+                    <Text style={styles.aiSuggestionText}>{safetyInsight.suggestion}</Text>
                   </View>
                 </View>
               )}
-
               <View style={styles.emergencyActions}>
                 <TouchableOpacity 
                   style={[styles.emergencyBtn, { backgroundColor: '#FF3B30' }]} 
@@ -684,14 +688,18 @@ export const LocationScreen = () => {
         distance={distanceToPartner}
         savedPlaces={partnerSavedPlaces || []}
         onFocusPlace={(place) => {
-          if (mapRef.current) {
-            mapRef.current.animateToRegion({
-              latitude: Number(place.latitude),
-              longitude: Number(place.longitude),
-              latitudeDelta: 0.005,
-              longitudeDelta: 0.005,
-            });
-          }
+          // Close the sheet first so the map is visible, then zoom to the location
+          setShowPartnerInfo(false);
+          setTimeout(() => {
+            if (mapRef.current) {
+              mapRef.current.animateToRegion({
+                latitude: Number(place.latitude),
+                longitude: Number(place.longitude),
+                latitudeDelta: 0.005,
+                longitudeDelta: 0.005,
+              }, 800);
+            }
+          }, 350); // Wait for sheet close animation
         }}
         isRefreshing={isRefreshing}
         partnerTrip={partnerTrip}
