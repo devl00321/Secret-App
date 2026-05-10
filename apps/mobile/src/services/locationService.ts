@@ -14,7 +14,6 @@ const LOCATION_TASK_NAME = 'background-location-task';
 const IS_EXPO_GO = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
 let lastAiCheckTime = 0;
 const AI_CHECK_INTERVAL = 15 * 60 * 1000; // 15 minutes
-
 // Background Task Definition
 TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
   if (error) {
@@ -90,35 +89,22 @@ export const locationService = {
 
           // ── PROACTIVE MAP INTELLIGENCE ──
           const now = Date.now();
-          const hour = new Date().getHours();
           const { walkSafe, isTripActive } = useLocationStore.getState();
           
-          // FOR TESTING: Bypassing time check and reducing interval
           const TEST_MODE = true; 
           const interval = TEST_MODE ? 30000 : AI_CHECK_INTERVAL;
 
           if (now - lastAiCheckTime > interval && !isTripActive && !walkSafe?.isActive) {
-            if (hour >= 22 || hour <= 5 || TEST_MODE) { 
-              lastAiCheckTime = now;
-              
-              // Lazy import to resolve Metro resolution issues
-              import('./aiService').then(({ aiService }) => {
-                aiService.getMapIntelligence({
-                  currentLocation: {
-                    latitude: location.coords.latitude,
-                    longitude: location.coords.longitude
-                  },
-                  timeOfDay: new Date().toLocaleTimeString(),
-                }).then(result => {
-                  if (result?.shouldAlert) {
-                    notificationService.sendLocalNotification(
-                      '🛡️ Safety Suggestion',
-                      `Luvv Guard: ${result.reason}. Tap to enable Reach Safely mode.`
-                    );
-                  }
-                });
-              });
-            }
+            lastAiCheckTime = now;
+            import('./safetyService').then(({ safetyService }) => {
+              const result = safetyService.getMapIntelligence(isTripActive, walkSafe?.isActive || false);
+              if (result?.shouldAlert) {
+                notificationService.sendLocalNotification(
+                  '🛡️ Safety Suggestion',
+                  `Luvv Guard: ${result.reason}. Tap to enable Reach Safely mode.`
+                );
+              }
+            });
           }
         }
       );
@@ -288,7 +274,16 @@ export const locationService = {
 
   sendPing: async (partnerId: string) => {
     const { user } = useAuthStore.getState();
-    if (!partnerId || !user) return;
+    console.log('[Ping] Attempting to send ping. PartnerId:', partnerId, '| SenderUid:', user?.uid);
+    
+    if (!partnerId) {
+      console.error('[Ping] FAILED: No partnerId provided!');
+      return;
+    }
+    if (!user) {
+      console.error('[Ping] FAILED: No logged-in user found!');
+      return;
+    }
 
     try {
       const partnerRef = doc(db, 'users', partnerId);
@@ -300,10 +295,12 @@ export const locationService = {
           type: 'heartbeat'
         }
       });
+      console.log('[Ping] SUCCESS: Ping written to Firestore for user:', partnerId);
     } catch (err) {
-      console.error('[LocationService] Failed to send ping:', err);
+      console.error('[Ping] FAILED: Firestore write error:', err);
     }
   },
+
 
   subscribeToIncomingPings: (userId: string, onPing: (ping: any) => void) => {
     if (!userId) return () => {};
@@ -372,31 +369,20 @@ export const locationService = {
             );
           }
 
-          // ── AI EMERGENCY ANALYSIS ──
+          // ── EMERGENCY ANALYSIS ──
           if (activeSos?.location) {
             const partnerProfile = useAuthStore.getState().partner;
             const partnerLoc = useLocationStore.getState().partnerLocation;
-            const userData = useAuthStore.getState().currentUserProfile;
             
-            // Lazy import to resolve Metro resolution issues
-            import('./aiService').then(({ aiService }) => {
-              aiService.analyzeEmergency({
-                location: {
-                  latitude: activeSos.location.latitude,
-                  longitude: activeSos.location.longitude,
-                  address: activeSos.address || 'Last known location'
-                },
-                batteryLevel: partnerLoc?.batteryLevel ? partnerLoc.batteryLevel / 100 : undefined,
-                time: new Date().toLocaleTimeString(),
+            import('./safetyService').then(({ safetyService }) => {
+              const insight = safetyService.getEmergencyInsight({
+                batteryLevel: partnerLoc?.batteryLevel,
                 partnerName: partnerProfile?.displayName || 'Partner',
-                userName: userData?.displayName || 'User',
-              }).then(insight => {
-                if (insight) {
-                  useLocationStore.getState().setAiInsight(insight);
-                }
               });
+              useLocationStore.getState().setSafetyInsight(insight);
             });
           }
+
         } else if (justBecameActive && activeSos?.triggeredBy === userId) {
           console.log('[LocationService] Victim triggered SOS - UI only, no local alert.');
           // Victim NEVER gets the siren/vibration alert, only the partner does.
@@ -407,7 +393,7 @@ export const locationService = {
           alertService.stopSiren();
           alertService.setVictimSilence(false);
           setSirenMuted(false); // Reset for next time
-          useLocationStore.getState().setAiInsight(null); // Clear AI insight
+          useLocationStore.getState().setSafetyInsight(null); // Clear insight
         }
       }
     });
@@ -675,5 +661,26 @@ export const locationService = {
     } catch (err) {
       console.error('[WalkSafe] Sync failed:', err);
     }
+  },
+
+  startWalkSafe: (name: string, latitude: number, longitude: number, durationMinutes: number = 30) => {
+    const destination: any = {
+      id: 'temp-' + Date.now(),
+      name,
+      latitude,
+      longitude,
+      radius: 200,
+      type: 'other'
+    };
+    
+    useLocationStore.getState().startWalkSafe(destination, durationMinutes);
+    locationService.startWalkSafeMonitor();
+    locationService.syncWalkSafe();
+    locationService.syncTripStatus();
+    
+    // Log to timeline
+    import('./activityService').then(({ activityService }) => {
+      activityService.logActivity('travel', `Started Walk Safe to ${name} 🚶‍♂️`);
+    });
   },
 };

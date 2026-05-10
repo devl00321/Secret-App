@@ -72,6 +72,10 @@ export default function RootLayout() {
     coupleId 
   } = useAuthStore();
 
+  useEffect(() => {
+    notificationService.init();
+  }, []);
+
   // 1. Auth & Data Listener Setup
   useEffect(() => {
     let userUnsubscribe: () => void = () => {};
@@ -156,12 +160,9 @@ export default function RootLayout() {
 
     const sosUnsubscribe = locationService.subscribeToCoupleSos(coupleId, user.uid);
     const pingUnsubscribe = locationService.subscribeToIncomingPings(user.uid, (ping) => {
-      console.log('💓 PING RECEIVED ON IPHONE!');
+      console.log('💓 PING RECEIVED!');
       
-      // Immediate vibration to cut through any lag
-      Vibration.vibrate([0, 50, 100, 50]); 
-      
-      // Global ping handling: Haptics + Notification
+      // Fire the full 20-second heartbeat haptic sequence
       alertService.triggerHeartbeatHaptics();
 
       const partnerName = useAuthStore.getState().currentUserProfile?.partnerNickname || 
@@ -174,10 +175,10 @@ export default function RootLayout() {
       );
 
       useLocationStore.getState().setIncomingPing(ping);
-      // Clear the visual ping after 15 seconds to match haptics
+      // Clear the visual ping after 20 seconds to match haptics
       setTimeout(() => {
         useLocationStore.getState().setIncomingPing(null);
-      }, 15000);
+      }, 20000);
     });
 
     // PRESENCE HEARTBEAT (Update every 20s while active to keep session alive)

@@ -232,35 +232,40 @@ export const alertService = {
   triggerHeartbeatHaptics: async () => {
     if (Platform.OS === 'web') return;
 
-    const duration = 15000; // 15 seconds
-    const interval = 1500;  // Every 1.5 seconds
-    let startTime = Date.now();
+    const TOTAL_DURATION_MS = 20000; // 20 seconds
+    const BEAT_INTERVAL_MS = 900;    // Heartbeat every 0.9s = ~67 BPM (realistic heart rate)
+    const startTime = Date.now();
 
+    // Realistic heartbeat: LUB (Heavy) → pause → DUB (Medium) → rest
     const pulse = async () => {
       try {
-        // High-fidelity double-thump heartbeat: bump-bump
-        // Vibration fallback for physical iOS devices
-        Vibration.vibrate([0, 20, 100, 20]); 
-        
+        // LUB - strong first beat
         await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+        
         setTimeout(async () => {
+          // DUB - slightly softer second beat
           await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-        }, 160);
+        }, 180); // 180ms gap between lub-dub
+
+        // Android: physical vibration to back it up
+        if (Platform.OS === 'android') {
+          Vibration.vibrate([0, 50, 180, 30]);
+        }
       } catch (e) {
-        console.warn('Heartbeat haptic failed:', e);
+        // Silently ignore haptic errors
       }
     };
 
-    // Initial pulse
+    // Fire the first pulse immediately
     pulse();
 
     const heartbeatInterval = setInterval(() => {
-      if (Date.now() - startTime >= duration) {
+      if (Date.now() - startTime >= TOTAL_DURATION_MS) {
         clearInterval(heartbeatInterval);
         return;
       }
       pulse();
-    }, interval);
+    }, BEAT_INTERVAL_MS);
   },
 
   // ─── Fallback vibration ────────────────────────────────────────────
