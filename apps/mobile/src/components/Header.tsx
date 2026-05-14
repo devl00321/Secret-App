@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native
 import { useRouter } from 'expo-router';
 import { ArrowLeft } from 'lucide-react-native';
 import { BlurView } from 'expo-blur';
+import { Image } from 'expo-image';
 import { useTheme } from '../theme';
 
 interface HeaderProps {
@@ -11,9 +12,19 @@ interface HeaderProps {
   rightElement?: React.ReactNode;
   transparent?: boolean;
   textColor?: string;
+  onTitlePress?: () => void;
+  avatarUrl?: string | null;
 }
 
-export const Header = ({ title, showBack = false, rightElement, transparent = false, textColor }: HeaderProps) => {
+export const Header = ({ 
+  title, 
+  showBack = false, 
+  rightElement, 
+  transparent = false, 
+  textColor,
+  onTitlePress,
+  avatarUrl
+}: HeaderProps) => {
   const router = useRouter();
   const theme = useTheme();
 
@@ -35,12 +46,26 @@ export const Header = ({ title, showBack = false, rightElement, transparent = fa
       ]}
     >
       <View style={styles.content}>
-        <Text 
-          style={[styles.title, { color: textColor ?? theme.text, marginHorizontal: 60 }]}
-          numberOfLines={1}
+        <TouchableOpacity 
+          activeOpacity={onTitlePress ? 0.7 : 1}
+          onPress={onTitlePress}
+          style={styles.titleWrapper}
+          disabled={!onTitlePress}
         >
-          {title}
-        </Text>
+          {avatarUrl && (
+            <Image 
+              source={{ uri: avatarUrl }} 
+              style={styles.headerAvatar}
+              contentFit="cover"
+            />
+          )}
+          <Text 
+            style={[styles.title, { color: textColor ?? theme.text }]}
+            numberOfLines={1}
+          >
+            {title}
+          </Text>
+        </TouchableOpacity>
         
         <View style={styles.rightSlot}>{rightElement ?? (showBack ? <View style={styles.placeholder} /> : null)}</View>
 
@@ -76,6 +101,20 @@ const styles = StyleSheet.create({
     left: 20,
     padding: 8,
     zIndex: 100,
+  },
+  titleWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: 50,
+    flex: 1,
+  },
+  headerAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    marginRight: 10,
+    backgroundColor: '#eee',
   },
   title: {
     fontSize: 18,

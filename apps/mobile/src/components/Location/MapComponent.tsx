@@ -22,7 +22,7 @@ interface MapComponentProps {
   destination: any;
   GOOGLE_MAPS_APIKEY: string;
   onMapReady: () => void;
-  updateMetrics: (dist: number, dur: number) => void;
+  updateMetrics: (dist: number, dur: number, steps?: any[]) => void;
   theme: any;
   darkMapStyle: any;
   user: any;
@@ -39,6 +39,10 @@ interface MapComponentProps {
   partnerWalkSafePath?: { latitude: number; longitude: number }[];
   lastCompletedPath?: { latitude: number; longitude: number }[] | null;
   partnerLastCompletedPath?: { latitude: number; longitude: number }[] | null;
+  showPath?: boolean;
+  isNavigating?: boolean;
+  autoFollow?: boolean;
+  setAutoFollow?: (follow: boolean) => void;
 }
 
 const getPlaceIcon = (type: string, color: string) => {
@@ -78,7 +82,11 @@ export const MapComponent = React.memo(({
   walkSafePath,
   partnerWalkSafePath,
   lastCompletedPath,
-  partnerLastCompletedPath
+  partnerLastCompletedPath,
+  showPath,
+  isNavigating,
+  autoFollow = true,
+  setAutoFollow
 }: MapComponentProps) => {
   const [shouldTrack, setShouldTrack] = React.useState(true);
 
@@ -103,6 +111,49 @@ export const MapComponent = React.memo(({
   const userCoords = getCoords(userLocation);
   const partnerCoords = partnerLocation ? { latitude: partnerLocation.latitude, longitude: partnerLocation.longitude } : null;
 
+  React.useEffect(() => {
+    if (isNavigating && userCoords && mapRef.current) {
+      mapRef.current.animateCamera({
+        center: userCoords,
+        pitch: 60,
+        heading: userLocation?.coords?.heading || 0,
+        altitude: 1000,
+        zoom: 18,
+      }, { duration: 1000 });
+    } else if (!isNavigating && mapRef.current) {
+      mapRef.current.animateCamera({
+        pitch: 0,
+        heading: 0,
+      }, { duration: 1000 });
+    }
+  }, [isNavigating]);
+
+  React.useEffect(() => {
+    if (isNavigating && setAutoFollow) {
+      setAutoFollow(true);
+    }
+  }, [isNavigating]);
+
+  React.useEffect(() => {
+    if (isNavigating && userCoords && mapRef.current && autoFollow) {
+      mapRef.current.animateCamera({
+        center: userCoords,
+        pitch: 60,
+        heading: userLocation?.coords?.heading || 0,
+        zoom: 18,
+      }, { duration: 1000 });
+    }
+  }, [userLocation?.coords?.latitude, userLocation?.coords?.longitude, userLocation?.coords?.heading, isNavigating, autoFollow]);
+
+  const handleRegionChange = (region: any, gesture: any) => {
+    if (gesture?.isGesture && isNavigating && setAutoFollow) {
+      setAutoFollow(false);
+    }
+    if (onRegionChangeComplete) {
+      onRegionChangeComplete(region);
+    }
+  };
+
   const validSavedPlaces = savedPlaces?.filter(p => p && p.latitude && p.longitude) || [];
 
   return (
@@ -112,7 +163,7 @@ export const MapComponent = React.memo(({
         style={styles.flex}
         provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
         onMapReady={onMapReady}
-        onRegionChangeComplete={onRegionChangeComplete}
+        onRegionChangeComplete={handleRegionChange}
         showsUserLocation={true}
         showsMyLocationButton={false}
         userInterfaceStyle={theme.isDark ? 'dark' : 'light'}
@@ -147,10 +198,19 @@ export const MapComponent = React.memo(({
             coordinate={userCoords}
             title="Me"
             tracksViewChanges={shouldTrack}
-            anchor={{ x: 0.5, y: 1 }}
-            zIndex={10}
+            anchor={{ x: 0.5, y: 0.5 }}
+            zIndex={100}
+            rotation={userLocation?.coords?.heading || 0}
+            flat={isNavigating} // Makes it tilt with the map in 3D
           >
-            <HeartMarker type="me" initial={user?.displayName?.[0] || 'M'} color={myColor} />
+            {isNavigating ? (
+              <View style={styles.navArrowContainer}>
+                <View style={[styles.navArrowMain, { borderBottomColor: theme.primary }]} />
+                <View style={styles.navArrowShadow} />
+              </View>
+            ) : (
+              <HeartMarker type="me" initial={user?.displayName?.[0] || 'M'} color={myColor} />
+            )}
           </Marker>
         )}
 
@@ -244,19 +304,28 @@ export const MapComponent = React.memo(({
           </>
         )}
 
-        {userCoords && partnerCoords && GOOGLE_MAPS_APIKEY && GOOGLE_MAPS_APIKEY !== 'YOUR_GOOGLE_MAPS_API_KEY_HERE' && !walkSafePath && (
+        {userCoords && partnerCoords && GOOGLE_MAPS_APIKEY && GOOGLE_MAPS_APIKEY !== 'YOUR_GOOGLE_MAPS_API_KEY_HERE' && showPath && (
           <MapViewDirections
             origin={userCoords}
             destination={partnerCoords}
             apikey={GOOGLE_MAPS_APIKEY}
-            strokeWidth={4}
+            strokeWidth={8}
             strokeColor={theme.primary}
             lineDashPattern={[0]}
+            precision="high"
             onReady={result => {
               const distDiff = Math.abs((distanceToPartner || 0) - result.distance);
               const etaDiff = Math.abs((etaToPartner || 0) - result.duration);
               if (distDiff > 0.05 || etaDiff > 1 || distanceToPartner === null) {
-                updateMetrics(result.distance, result.duration);
+                updateMetrics(result.distance, result.duration, result.legs[0]?.steps);
+              }
+              
+              // Fit to both points if newly shown, but NOT when navigating
+              if (mapRef.current && showPath && !isNavigating) {
+                mapRef.current.fitToCoordinates([userCoords, partnerCoords], {
+                  edgePadding: { top: 100, right: 100, bottom: 100, left: 100 },
+                  animated: true,
+                });
               }
             }}
           />
@@ -380,5 +449,39 @@ const styles = StyleSheet.create({
     marginTop: -3,
     borderWidth: 1,
     borderColor: 'white'
+  },
+  navArrowContainer: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  navArrowMain: {
+    width: 0,
+    height: 0,
+    backgroundColor: 'transparent',
+    borderStyle: 'solid',
+    borderLeftWidth: 12,
+    borderRightWidth: 12,
+    borderBottomWidth: 30,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    transform: [{ scaleY: 1.2 }],
+  },
+  navArrowShadow: {
+    position: 'absolute',
+    width: 0,
+    height: 0,
+    backgroundColor: 'transparent',
+    borderStyle: 'solid',
+    borderLeftWidth: 14,
+    borderRightWidth: 14,
+    borderBottomWidth: 34,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderBottomColor: 'rgba(0,0,0,0.2)',
+    zIndex: -1,
+    top: 2,
+    transform: [{ scaleY: 1.2 }],
   }
 });

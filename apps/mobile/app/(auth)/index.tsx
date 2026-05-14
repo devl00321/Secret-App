@@ -1,5 +1,6 @@
 import React from 'react';
 import { Alert, StyleSheet, View, Text, TouchableOpacity, Platform, Dimensions } from 'react-native';
+import { BlurView } from 'expo-blur';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Heart, Phone, Mail, Globe } from 'lucide-react-native';
@@ -62,11 +63,22 @@ export default function AuthChoiceScreen() {
   }, [response, setAuthMethod, setLoading]);
 
   const handlePress = (target: Href, method: 'phone' | 'email') => {
+    // 1. Trigger haptics safely
     if (Platform.OS !== 'web') {
-      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      try {
+        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      } catch (e) {
+        // Ignore haptic failures
+      }
     }
+
+    // 2. Set state first
     setAuthMethod(method);
-    router.push(target);
+
+    // 3. Defer navigation to ensure state is committed and UI is ready (Crucial for Android)
+    setTimeout(() => {
+      router.push(target);
+    }, 50);
   };
 
   const handleGooglePress = () => {
@@ -88,12 +100,25 @@ export default function AuthChoiceScreen() {
   return (
     <View style={styles.container}>
       <LinearGradient 
-        colors={['#FF6B6B', '#FF4E50', '#F9D423']} 
-        style={styles.background}
+        colors={['#FF6B6B', '#FF8E8E', '#FFD1D1']} 
+        style={StyleSheet.absoluteFill}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
       />
       
+      {/* Cinematic Lens Blur Layer */}
+      <View style={StyleSheet.absoluteFill}>
+        <Animated.View 
+          entering={FadeInUp.delay(100).duration(2000)}
+          style={[styles.lenseBlob, { top: -50, right: -100, backgroundColor: 'rgba(255, 255, 255, 0.4)', width: 350, height: 350 }]} 
+        />
+        <Animated.View 
+          entering={FadeInDown.delay(300).duration(2500)}
+          style={[styles.lenseBlob, { bottom: -100, left: -100, backgroundColor: 'rgba(255, 255, 255, 0.25)', width: 450, height: 450 }]} 
+        />
+        <BlurView intensity={Platform.OS === 'android' ? 85 : 40} tint="light" style={StyleSheet.absoluteFill} />
+      </View>
+
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.content}>
           <Animated.View 
@@ -109,25 +134,29 @@ export default function AuthChoiceScreen() {
 
           <Animated.View 
             entering={FadeInDown.delay(400).duration(1000)}
-            style={styles.buttonContainer}
+            style={styles.glassCardWrapper}
           >
-            <TouchableOpacity
-              style={styles.primaryButton}
-              onPress={() => handlePress('/(auth)/phone', 'phone')}
-              activeOpacity={0.9}
-            >
-              <Phone size={22} color="#FF6B6B" style={styles.icon} />
-              <Text style={styles.primaryButtonText}>Continue with Phone</Text>
-            </TouchableOpacity>
+            <BlurView intensity={Platform.OS === 'ios' ? 40 : 78} tint="light" style={styles.glassCard}>
+              <TouchableOpacity
+                style={styles.primaryButton}
+                onPress={() => handlePress('/(auth)/phone', 'phone')}
+                activeOpacity={0.9}
+              >
+                <View style={styles.buttonIcon}>
+                  <Phone size={24} color="#FF6B6B" />
+                </View>
+                <Text style={styles.primaryButtonText}>Continue with Phone</Text>
+              </TouchableOpacity>
 
-            <TouchableOpacity
-              style={styles.ghostButton}
-              onPress={() => handlePress('/(auth)/email', 'email')}
-              activeOpacity={0.7}
-            >
-              <Mail size={18} color="white" style={styles.iconSmall} />
-              <Text style={styles.ghostButtonText}>Email Login</Text>
-            </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.secondaryButton}
+                onPress={() => handlePress('/(auth)/email', 'email')}
+                activeOpacity={0.8}
+              >
+                <Mail size={22} color="white" style={styles.buttonIconLeft} />
+                <Text style={styles.secondaryButtonText}>Email Login</Text>
+              </TouchableOpacity>
+            </BlurView>
           </Animated.View>
 
           <Animated.View 
@@ -158,6 +187,11 @@ const styles = StyleSheet.create({
   },
   safeArea: {
     flex: 1,
+  },
+  lenseBlob: {
+    position: 'absolute',
+    borderRadius: 999,
+    opacity: 0.8,
   },
   content: {
     flex: 1,
@@ -195,6 +229,35 @@ const styles = StyleSheet.create({
     marginTop: 4,
     fontWeight: '600',
     letterSpacing: 0.5,
+  },
+  glassCardWrapper: {
+    width: '100%',
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 15 },
+    shadowOpacity: 0.15,
+    shadowRadius: 25,
+    elevation: 10,
+  },
+  glassCard: {
+    padding: 24,
+    borderRadius: 40,
+    gap: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    overflow: 'hidden',
+  },
+  buttonIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 107, 107, 0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 15,
+  },
+  buttonIconLeft: {
+    marginRight: 12,
   },
   buttonContainer: {
     width: '100%',

@@ -1,19 +1,25 @@
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
-import messaging from '@react-native-firebase/messaging';
+import messaging, { getMessaging, onTokenRefresh } from '@react-native-firebase/messaging';
 import { db, authInstance, doc, updateDoc } from './firebase';
 
 // Helper to safely get the Notifications module
 const getNotifications = () => {
-  if (Platform.OS !== 'web' && Constants.appOwnership !== 'expo') {
-    try {
-      return require('expo-notifications');
-    } catch (e) {
-      console.warn('[NotificationService] Could not require expo-notifications:', e);
+  // Only attempt to load expo-notifications in native environments
+  if (Platform.OS === 'web' || Constants.appOwnership === 'expo') return null;
+
+  try {
+    // Check if the native module exists in NativeModules first
+    const { NativeModules } = require('react-native');
+    if (!NativeModules.ExpoPushTokenManager) {
       return null;
     }
+
+    const Notifications = require('expo-notifications');
+    return Notifications;
+  } catch (e) {
+    return null;
   }
-  return null;
 };
 
 export const notificationService = {
@@ -39,8 +45,10 @@ export const notificationService = {
     // 2. Initialize Push Notifications (FCM) ONLY FOR ANDROID per user request
     if (Platform.OS === 'android') {
       try {
+        const messagingInstance = getMessaging();
+        
         // Request permission (mostly for Android 13+)
-        const authStatus = await messaging().requestPermission();
+        const authStatus = await messagingInstance.requestPermission();
         const enabled =
           authStatus === messaging.AuthorizationStatus.AUTHORIZED ||
           authStatus === messaging.AuthorizationStatus.PROVISIONAL;
@@ -49,14 +57,14 @@ export const notificationService = {
           console.log('[NotificationService] FCM Authorization status:', authStatus);
           
           // Get the token
-          const fcmToken = await messaging().getToken();
+          const fcmToken = await messagingInstance.getToken();
           if (fcmToken) {
             console.log('[NotificationService] FCM Token:', fcmToken);
             await notificationService.saveTokenToFirestore(fcmToken);
           }
 
           // Listen to whether the token changes
-          messaging().onTokenRefresh(async (token) => {
+          onTokenRefresh(messagingInstance, async (token) => {
             console.log('[NotificationService] FCM Token refreshed:', token);
             await notificationService.saveTokenToFirestore(token);
           });

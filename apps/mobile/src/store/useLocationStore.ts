@@ -70,7 +70,15 @@ interface LocationState {
   lastCompletedPath: { latitude: number; longitude: number }[] | null;
   lastCompletedTime: number | null;
   incomingPing: { from: string; timestamp: number; type: string } | null;
-  safetyInsight: { summary: string; riskLevel: string; suggestion: string } | null;
+  safetyInsight: { 
+    message: string; 
+    status: 'safe' | 'warning' | 'alert'; 
+    suggestion?: string;
+    reason?: string;
+  } | null;
+  navigationSteps: any[] | null;
+  isNavigating: boolean;
+  isVoiceEnabled: boolean;
 
   // Actions
   setUserLocation: (location: Location.LocationObject | null) => void;
@@ -95,6 +103,10 @@ interface LocationState {
   extendWalkSafe: (extraMinutes: number) => void;
   setIncomingPing: (ping: LocationState['incomingPing']) => void;
   setSafetyInsight: (insight: LocationState['safetyInsight']) => void;
+  setAiInsight: (insight: any) => void; // Alias for setSafetyInsight
+  setNavigationSteps: (steps: any[] | null) => void;
+  setIsNavigating: (isNavigating: boolean) => void;
+  toggleVoice: () => void;
 }
 
 export const useLocationStore = create<LocationState>()(
@@ -121,6 +133,9 @@ export const useLocationStore = create<LocationState>()(
       partnerLastCompletedTime: null,
       incomingPing: null,
       safetyInsight: null,
+      navigationSteps: null,
+      isNavigating: false,
+      isVoiceEnabled: true,
 
       setUserLocation: (userLocation) => set({ userLocation }),
       setPartnerLocation: (partnerLocation) => set({ partnerLocation }),
@@ -137,6 +152,10 @@ export const useLocationStore = create<LocationState>()(
       setSavedPlaces: (savedPlaces) => set({ savedPlaces }),
       setIncomingPing: (incomingPing) => set({ incomingPing }),
       setSafetyInsight: (safetyInsight) => set({ safetyInsight }),
+      setAiInsight: (safetyInsight) => set({ safetyInsight }),
+      setNavigationSteps: (navigationSteps) => set({ navigationSteps }),
+      setIsNavigating: (isNavigating) => set({ isNavigating }),
+      toggleVoice: () => set((state) => ({ isVoiceEnabled: !state.isVoiceEnabled })),
 
       startWalkSafe: (destination, durationMinutes) => {
         const now = Date.now();

@@ -1,8 +1,9 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { db, serverTimestamp, storageInstance, collection, doc, addDoc, deleteDoc, updateDoc, onSnapshot, query, orderBy, limit, where, getDocs, writeBatch } from '../services/firebase';
 import { encryptionService } from '../services/encryptionService';
+import { useAuthStore } from './useAuthStore';
+import { encryptedStorage } from '../services/secureStorage';
 import * as FileSystem from 'expo-file-system/legacy';
 
 interface Message {
@@ -37,6 +38,7 @@ interface ChatState {
   deleteMessage: (messageId: string, coupleId: string) => Promise<void>;
   deleteMessageLocally: (messageId: string) => void;
   markMessagesAsRead: (coupleId: string, currentUserId: string) => Promise<void>;
+  reDecryptAllMessages: (secret: string) => Promise<void>;
 }
 
 export const useChatStore = create<ChatState>()(
@@ -76,13 +78,39 @@ export const useChatStore = create<ChatState>()(
                   updateDoc(change.doc.ref, { isDelivered: true });
                 }
 
+                // Decrypt using the proper shared secret (falls back to legacy bridge)
+                const { sharedSecret } = useAuthStore.getState();
+                const activeSecret = sharedSecret || encryptionService.getLegacySecret(coupleId);
+
                 // Decrypt and add if not already present
                 if (!updatedMessages.find(m => m.id === id) && !hiddenMessageIds.includes(id)) {
                   const createdAtMillis = data.createdAt?.toMillis?.() || Date.now();
+                  
+                  // Double-Secret Fallback for real-time decryption
+                  const decryptMessage = async (ciphertext: string) => {
+                    const primaryTry = await encryptionService.decryptField(ciphertext, activeSecret);
+                    if (primaryTry === ciphertext && ciphertext.length > 20) {
+                      const legacySecret = encryptionService.getLegacySecret(coupleId);
+                      if (activeSecret !== legacySecret) {
+                        const secondaryTry = await encryptionService.decryptField(ciphertext, legacySecret);
+                        return secondaryTry;
+                      }
+                    }
+                    return primaryTry;
+                  };
+
+                  decryptMessage(data.text || '').then(decryptedText => {
+                    set(state => ({
+                      messages: state.messages.map(m =>
+                        m.id === id ? { ...m, text: decryptedText } : m
+                      ),
+                    }));
+                  });
+
                   const newMessage: Message = {
                     id,
                     ...data,
-                    text: encryptionService.decrypt(data.text || '', coupleId),
+                    text: '', // Placeholder while async decrypt runs
                     localTimestamp: createdAtMillis,
                   } as Message;
                   
@@ -120,16 +148,30 @@ export const useChatStore = create<ChatState>()(
               }
 
               if (change.type === 'modified') {
-                updatedMessages = updatedMessages.map(m => 
-                  m.id === id 
-                    ? { 
-                        ...m, 
-                        ...data, 
-                        text: encryptionService.decrypt(data.text || '', coupleId),
+                const { sharedSecret } = useAuthStore.getState();
+                const activeSecret = sharedSecret || encryptionService.getLegacySecret(coupleId);
+
+                updatedMessages = updatedMessages.map(m =>
+                  m.id === id
+                    ? {
+                        ...m,
+                        ...data,
+                        text: m.text, // keep existing decrypted text; async update fires below
                         localTimestamp: m.localTimestamp || data.createdAt?.toMillis?.() || Date.now()
-                      } 
+                      }
                     : m
                 );
+
+                // Async re-decrypt the updated ciphertext
+                if (data.text) {
+                  encryptionService.decryptField(data.text, activeSecret).then(decryptedText => {
+                    set(state => ({
+                      messages: state.messages.map(m =>
+                        m.id === id ? { ...m, text: decryptedText } : m
+                      ),
+                    }));
+                  });
+                }
 
                 // PRIVACY CLEANUP TRIGGER (Sender side)
                 if (data.senderId === currentUserId && data.isRead) {
@@ -144,6 +186,7 @@ export const useChatStore = create<ChatState>()(
                   }, 120000);
                 }
               }
+
 
               if (change.type === 'removed') {
                 const existing = updatedMessages.find(m => m.id === id);
@@ -254,7 +297,9 @@ export const useChatStore = create<ChatState>()(
 
       sendMessage: async (text, senderId, coupleId, imageUrl) => {
         try {
-          const encryptedText = encryptionService.encrypt(text, coupleId);
+          const { sharedSecret } = useAuthStore.getState();
+          const activeSecret = sharedSecret || encryptionService.getLegacySecret(coupleId);
+          const encryptedText = await encryptionService.encryptField(text, activeSecret);
           await addDoc(collection(db, 'couples', coupleId, 'messages'), {
             text: encryptedText,
             senderId,
@@ -308,10 +353,33 @@ export const useChatStore = create<ChatState>()(
           console.error('Error marking messages as read:', error);
         }
       },
+      
+      reDecryptAllMessages: async (secret) => {
+        const { messages } = get();
+        if (messages.length === 0) return;
+        
+        const { coupleId } = useAuthStore.getState();
+        
+        const decrypted = await Promise.all(messages.map(async (m) => {
+          const primaryTry = await encryptionService.decryptField(m.text, secret);
+          let text = primaryTry;
+
+          if (primaryTry === m.text && m.text.length > 20 && coupleId) {
+            const legacySecret = encryptionService.getLegacySecret(coupleId);
+            if (secret !== legacySecret) {
+              const secondaryTry = await encryptionService.decryptField(m.text, legacySecret);
+              text = secondaryTry;
+            }
+          }
+          return { ...m, text };
+        }));
+        
+        set({ messages: decrypted });
+      }
     }),
     {
       name: 'luvv-chat-storage',
-      storage: createJSONStorage(() => AsyncStorage),
+      storage: createJSONStorage(() => encryptedStorage),
       partialize: (state) => ({ 
         messages: state.messages,
         hiddenMessageIds: state.hiddenMessageIds

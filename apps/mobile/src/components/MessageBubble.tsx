@@ -2,9 +2,11 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, Pressable, Image, Modal, TouchableOpacity, Platform, Alert, ActivityIndicator } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { CheckCheck, Check, X, Download } from 'lucide-react-native';
+import { CircularProgress } from './CircularProgress';
+
 import { useTheme } from '../theme';
 import { useAuthStore } from '../store/useAuthStore';
-import Animated, { FadeInUp, Layout } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeInUp, Layout } from 'react-native-reanimated';
 import * as FileSystem from 'expo-file-system/legacy';
 
 interface MessageBubbleProps {
@@ -100,7 +102,11 @@ export const MessageBubble = ({
     <Animated.View 
       entering={FadeInUp.duration(400).springify()}
       layout={Layout.springify()}
-      style={[styles.container, isMe ? styles.myMessage : styles.partnerMessage]}
+      style={[
+        styles.container, 
+        isMe ? styles.myMessage : styles.partnerMessage,
+        Platform.OS === 'android' && { transform: [{ scaleY: -1 }] }
+      ]}
     >
       <Pressable 
         ref={bubbleRef}
@@ -127,19 +133,15 @@ export const MessageBubble = ({
                   resizeMode="cover"
                 />
                 {isPending && (
-                  <View style={styles.uploadOverlay}>
-                    <View style={styles.progressContainer}>
-                      <ActivityIndicator size="small" color="white" />
-                      <Text style={styles.progressText}>{Math.round(uploadProgress)}%</Text>
-                    </View>
-                    <TouchableOpacity 
-                      style={styles.cancelBtnTopRight}
-                      onPress={(e) => { e.stopPropagation(); onCancelUpload?.(id); }}
-                      hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
-                    >
-                      <X size={14} color="white" strokeWidth={3} />
-                    </TouchableOpacity>
-                  </View>
+                  <Animated.View 
+                    entering={FadeIn.duration(300)}
+                    style={styles.uploadOverlay}
+                  >
+                    <CircularProgress 
+                      progress={uploadProgress} 
+                      onCancel={() => onCancelUpload?.(id)}
+                    />
+                  </Animated.View>
                 )}
               </View>
             )}
@@ -290,33 +292,8 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: 'rgba(0,0,0,0.25)',
     borderRadius: 20,
-  },
-  progressContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    borderRadius: 16,
-  },
-  progressText: {
-    color: 'white',
-    fontSize: 13,
-    fontWeight: '800',
-    marginTop: 8,
-  },
-  cancelBtnTopRight: {
-    position: 'absolute',
-    top: 10,
-    right: 10,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   previewOverlay: {
     flex: 1,

@@ -235,11 +235,12 @@ export const PrivacyScreen = () => {
           </Card>
         </Animated.View>
 
+        <Text style={[styles.sectionTitle, { color: '#F43F5E', marginTop: 10 }]}>Danger Zone</Text>
         <TouchableOpacity 
           style={styles.deleteAccountBtn}
           onPress={handleDeleteAccount}
         >
-          <Lock size={16} color="#F43F5E" />
+          <Trash2 size={18} color="#F43F5E" />
           <Text style={styles.deleteAccountText}>Delete Account Permanently</Text>
         </TouchableOpacity>
 

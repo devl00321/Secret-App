@@ -23,7 +23,15 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if isSignedIn();
       allow create: if isOwner(userId);
-      allow update: if isOwner(userId);
+      
+      // Update rule: a user can update their own doc freely,
+      // BUT the publicKey field (ECDH key) can ONLY be written by the owner.
+      allow update: if isOwner(userId) || (
+        isSignedIn() && 
+        resource.data.partnerId == request.auth.uid &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['partnerId', 'coupleId', 'partnerNickname', 'incomingPingEnc', 'incomingPingTs'])
+      );
+      
       allow delete: if isOwner(userId);
     }
 
@@ -32,14 +40,14 @@ service cloud.firestore {
       allow read: if isSignedIn() && resource.data.users.hasAny([request.auth.uid]);
       allow create: if isSignedIn();
       allow update: if isSignedIn() && resource.data.users.hasAny([request.auth.uid]);
+      allow delete: if isSignedIn() && resource.data.users.hasAny([request.auth.uid]);
       
       // 3. Messages (Nested Subcollection)
-      // By nesting the match, we get the 'coupleId' from the path!
       match /messages/{messageId} {
         allow read: if isPartnerOf(coupleId);
         allow create: if isPartnerOf(coupleId);
         allow update: if isPartnerOf(coupleId);
-        allow delete: if isOwner(resource.data.senderId);
+        allow delete: if isPartnerOf(coupleId);
       }
       
       // 5. Activities (Nested)

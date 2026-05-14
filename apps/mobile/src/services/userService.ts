@@ -1,4 +1,6 @@
-import { db, authInstance, serverTimestamp, collection, doc, setDoc, getDoc, updateDoc, deleteDoc, writeBatch, getDocs } from './firebase';
+import { db, authInstance, serverTimestamp, collection, doc, setDoc, getDoc, updateDoc, deleteDoc, writeBatch, getDocs, query, where } from './firebase';
+import { encryptionService } from './encryptionService';
+import { useAuthStore } from '../store/useAuthStore';
 
 export interface PartnerProfile {
   id: string;
@@ -12,22 +14,24 @@ export interface PartnerProfile {
   isOnline: boolean;
   lastMessage?: string;
   gender?: 'Male' | 'Female' | 'Non-binary' | 'Prefer not to say' | '';
-  dob?: string; // DD/MM/YYYY
+  dob?: string; // DD/MM/YYYY — stored encrypted
   profileSetupComplete?: boolean;
-  partnerNickname?: string;
-  anniversaryDate?: string; // DD/MM/YYYY
+  partnerNickname?: string; // stored encrypted
+  anniversaryDate?: string; // DD/MM/YYYY — stored encrypted
+  publicKey?: string; // ECDH public key — plaintext (safe to expose)
   emergencyContact?: {
-    name: string;
-    phone: string;
+    name: string;   // stored encrypted
+    phone: string;  // stored encrypted
     updatedAt: string;
   };
   emergencyContacts?: {
     id: string;
-    name: string;
-    phone: string;
+    name: string;   // stored encrypted
+    phone: string;  // stored encrypted
     priority: number;
     updatedAt: string;
   }[];
+  savedPlaces?: any[]; // stored encrypted (array of location objects)
 }
 
 // Strict type for allowed couple-level updates (prevents overwriting protected fields)
@@ -39,26 +43,42 @@ export interface CoupleUpdateData {
   sosCancelledBy?: string | null;
 }
 
+// ─── Internal Helpers ────────────────────────────────────────────────────────
+
+/**
+ * Gets the active shared secret — prefers ECDH, falls back to legacy bridge.
+ */
+function getActiveSecret(coupleId: string | null): string {
+  const { sharedSecret } = useAuthStore.getState();
+  if (sharedSecret) return sharedSecret;
+  if (coupleId) return encryptionService.getLegacySecret(coupleId);
+  return 'luvv_no_couple';
+}
+
+// ─── Service ─────────────────────────────────────────────────────────────────
+
 export const userService = {
   /**
-   * Syncs user data with Firestore. 
-   * Does NOT throw errors to prevent blocking the app initialization.
+   * Syncs user data with Firestore on login/signup.
+   * Does NOT throw errors to prevent blocking app initialization.
    */
   createUserIfNotExists: async (user: any) => {
     try {
       const userRef = doc(db, 'users', user.uid);
-      
-      const timeoutPromise = new Promise((_, reject) => 
+
+      const timeoutPromise = new Promise((_, reject) =>
         setTimeout(() => reject(new Error('Timeout')), 3000)
       );
 
-      // Use a short-lived check for existence with timeout
       const userSnap = await Promise.race([
         getDoc(userRef),
-        timeoutPromise
+        timeoutPromise,
       ]) as any;
 
       if (!userSnap.exists()) {
+        // Generate ECDH keypair for new user immediately
+        const publicKey = await encryptionService.getPublicKey();
+
         const userData = {
           id: user.uid,
           email: user.email || null,
@@ -70,11 +90,11 @@ export const userService = {
           coupleId: null,
           isOnline: true,
           profileSetupComplete: false,
+          publicKey, // ← ECDH public key uploaded at account creation
         };
         await setDoc(userRef, userData);
         return userData;
       } else {
-        // Update presence even on existing user
         await updateDoc(userRef, { isOnline: true });
         return userSnap.data() as PartnerProfile;
       }
@@ -87,40 +107,81 @@ export const userService = {
   getUserData: async (uid: string): Promise<PartnerProfile | null> => {
     try {
       const userSnap = await getDoc(doc(db, 'users', uid));
-      const data = userSnap.data();
-      return data ? (data as PartnerProfile) : null;
+      const data = userSnap.data() as PartnerProfile;
+      if (!data) return null;
+
+      const { coupleId } = useAuthStore.getState();
+      const secret = getActiveSecret(coupleId);
+      
+      return await encryptionService.decryptProfileFields(data, secret) as PartnerProfile;
     } catch (err) {
       console.warn('[UserService] Get data failed:', err);
       return null;
     }
   },
 
+  /**
+   * Helper to decrypt a profile object using the active shared secret.
+   */
+  decryptProfile: async (data: any): Promise<PartnerProfile> => {
+    const { coupleId } = useAuthStore.getState();
+    const secret = getActiveSecret(coupleId);
+    
+    try {
+      return await encryptionService.decryptProfileFields(data, secret) as PartnerProfile;
+    } catch (e) {
+      // If primary decryption fails, try the legacy secret explicitly
+      const legacySecret = encryptionService.getLegacySecret(coupleId || '');
+      if (secret !== legacySecret) {
+        try {
+          return await encryptionService.decryptProfileFields(data, legacySecret) as PartnerProfile;
+        } catch (e2) {}
+      }
+      return data as PartnerProfile;
+    }
+  },
+
   updateUserPresence: async (uid: string, isOnline: boolean) => {
     try {
       const userRef = doc(db, 'users', uid);
-      await setDoc(userRef, { 
+      await setDoc(userRef, {
         isOnline,
-        lastActive: serverTimestamp() 
+        lastActive: serverTimestamp()
       }, { merge: true });
     } catch (err) {
       // Silent fail for presence
     }
   },
 
+  /**
+   * Updates user profile fields — encrypting sensitive fields before write.
+   */
   updateUserProfile: async (uid: string, data: Partial<PartnerProfile>) => {
     try {
+      const { coupleId } = useAuthStore.getState();
+      const secret = getActiveSecret(coupleId);
+
+      const encryptedData = await encryptionService.encryptProfileFields(data, secret);
+
       const userRef = doc(db, 'users', uid);
-      await setDoc(userRef, data, { merge: true });
+      await setDoc(userRef, encryptedData, { merge: true });
     } catch (err) {
       console.warn('[UserService] Profile update failed:', err);
       throw err;
     }
   },
 
+  /**
+   * Updates partner nickname — encrypted before write.
+   */
   updatePartnerNickname: async (uid: string, nickname: string) => {
     try {
+      const { coupleId } = useAuthStore.getState();
+      const secret = getActiveSecret(coupleId);
+
+      const encryptedNickname = await encryptionService.encryptField(nickname, secret);
       const userRef = doc(db, 'users', uid);
-      await setDoc(userRef, { partnerNickname: nickname }, { merge: true });
+      await setDoc(userRef, { partnerNickname: encryptedNickname }, { merge: true });
     } catch (err) {
       console.warn('[UserService] Nickname update failed:', err);
       throw err;
@@ -143,19 +204,23 @@ export const userService = {
    */
   deleteUserAccount: async (uid: string, partnerId: string | null, coupleId: string | null) => {
     try {
-      // 1. Try to delete the user from Firebase Auth FIRST
       const currentUser = authInstance.currentUser;
-      if (currentUser) {
-        await currentUser.delete();
-      } else {
+      if (!currentUser) {
         throw new Error('No current user found');
       }
 
-      // 2. If Auth deletion succeeds, clean up SHARED DATA (Chat & Timeline)
+      // 1. Purge Invite Codes created by this user
+      const codes = await getDocs(query(collection(db, 'inviteCodes'), where('createdBy', '==', uid)));
+      if (!codes.empty) {
+        const codeBatch = writeBatch(db);
+        codes.docs.forEach(docSnap => codeBatch.delete(docSnap.ref));
+        await codeBatch.commit();
+      }
+
+      // 2. Clean up Couple Data (Messages, Activities, etc.)
       if (coupleId) {
         const coupleRef = doc(db, 'couples', coupleId);
-        
-        // Delete messages sub-collection
+
         const messages = await getDocs(collection(db, 'couples', coupleId, 'messages'));
         if (!messages.empty) {
           const msgBatch = writeBatch(db);
@@ -163,7 +228,6 @@ export const userService = {
           await msgBatch.commit();
         }
 
-        // Delete activities sub-collection
         const activities = await getDocs(collection(db, 'couples', coupleId, 'activities'));
         if (!activities.empty) {
           const actBatch = writeBatch(db);
@@ -171,15 +235,13 @@ export const userService = {
           await actBatch.commit();
         }
 
-        // Delete the main couple document
         await deleteDoc(coupleRef);
       }
 
-      // 3. Clean up USER profile and Partner references
-      const userRef = doc(db, 'users', uid);
-      
+      // 3. Unlink Partner
       if (partnerId) {
         const partnerRef = doc(db, 'users', partnerId);
+        // This setDoc will now pass rules thanks to the partner update rule
         await setDoc(partnerRef, {
           partnerId: null,
           coupleId: null,
@@ -187,12 +249,22 @@ export const userService = {
         }, { merge: true });
       }
 
+      // 4. Delete User Profile document
+      const userRef = doc(db, 'users', uid);
       await deleteDoc(userRef);
-      
+
+      // 5. FINALLY Delete the Firebase Auth User
+      // This MUST be last because subsequent Firestore calls will lose permissions once deleted.
+      await currentUser.delete();
+
       return true;
     } catch (err) {
-      console.error('[UserService] Full data purge failed:', err);
+      console.error('[UserService] Full account deletion failed:', err);
       throw err;
     }
-  }
+  },
+
+  // Exposed for components that need to decrypt profile data received from Firestore
+  decryptProfileFields: (data: any, secret: string) => encryptionService.decryptProfileFields(data, secret),
+  encryptProfileFields: (data: any, secret: string) => encryptionService.encryptProfileFields(data, secret),
 };

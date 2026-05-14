@@ -29,7 +29,7 @@ const { height } = Dimensions.get('window');
 
 export default function PairingScreen() {
   const theme = useTheme();
-  const { user } = useAuthStore();
+  const { user, logout } = useAuthStore();
   const [inviteCode, setInviteCode] = useState('');
   const [generatedCode, setGeneratedCode] = useState<{ code: string, expiresAt: Date } | null>(null);
   const [loading, setLoading] = useState(false);
@@ -127,13 +127,7 @@ export default function PairingScreen() {
           text: 'Sign Out', 
           style: 'destructive', 
           onPress: async () => {
-            try {
-              if (authInstance.currentUser) {
-                await signOut(authInstance);
-              }
-            } catch (err) {
-              console.error('Sign out error:', err);
-            }
+            await logout();
           } 
         }
       ]

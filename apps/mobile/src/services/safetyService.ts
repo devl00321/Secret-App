@@ -13,29 +13,29 @@ export const safetyService = {
     const isLateNight = hour >= 21 || hour < 6;
     const isLowBattery = context.batteryLevel !== undefined && context.batteryLevel <= 40;
 
-    let summary = '';
+    let message = '';
     let suggestion = '';
-    let riskLevel: 'low' | 'medium' | 'high' = 'medium';
+    let status: 'safe' | 'warning' | 'alert' = 'warning';
 
     if (isLateNight && isLowBattery) {
-      riskLevel = 'high';
-      summary = `It's getting late and ${context.partnerName}'s phone battery is running a bit low (${context.batteryLevel}%). They might just be on their way back.`;
+      status = 'alert';
+      message = `It's getting late and ${context.partnerName}'s phone battery is running a bit low (${context.batteryLevel}%). They might just be on their way back.`;
       suggestion = `Give them a quick call to check in, ensure they're okay, and take care of them.`;
     } else if (isLateNight) {
-      riskLevel = 'medium';
-      summary = `It's night time and ${context.partnerName} is still outside or not at home yet.`;
+      status = 'warning';
+      message = `It's night time and ${context.partnerName} is still outside or not at home yet.`;
       suggestion = `Call them once just to check in and see if they need anything. Take care of them!`;
     } else if (isLowBattery) {
-      riskLevel = 'low';
-      summary = `${context.partnerName}'s phone battery is getting low (${context.batteryLevel}%).`;
+      status = 'warning';
+      message = `${context.partnerName}'s phone battery is getting low (${context.batteryLevel}%).`;
       suggestion = `You might want to reach out before their phone dies, just to check on them.`;
     } else {
-      riskLevel = 'low';
-      summary = `${context.partnerName} has triggered an alert.`;
+      status = 'warning';
+      message = `${context.partnerName} has triggered an alert.`;
       suggestion = `Give them a quick call to see what's up and let them know you're there for them.`;
     }
 
-    return { summary, riskLevel, suggestion };
+    return { message, status, suggestion };
   },
 
   /**

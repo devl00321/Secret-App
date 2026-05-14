@@ -15,6 +15,73 @@ import { useChatStore } from '../store/chat';
 import { withRepeat, withSequence, withTiming, interpolateColor } from 'react-native-reanimated';
 
 
+const GlowLayers = ({ state, theme, currentUserProfile }: { state: any, theme: any, currentUserProfile: any }) => {
+  return (
+    <>
+      {/* Primary Glow (Coral) - Only if not female AND not on timeline */}
+      <Animated.View style={[StyleSheet.absoluteFill, { 
+        opacity: useDerivedValue(() => {
+          const isTimeline = state.routes[state.index].name === 'timeline';
+          const isFemale = currentUserProfile?.gender === 'Female';
+          return withSpring((!isTimeline && !isFemale) ? 1 : 0);
+        }) 
+      }]}>
+        <LinearGradient
+          colors={Platform.select({
+            android: ['transparent', theme.primary + '80', theme.primary + 'F5', theme.primary + '80', 'transparent'],
+            default: ['transparent', theme.primary + '30', theme.primary + '60', theme.primary + '30', 'transparent']
+          })}
+          locations={Platform.select({
+            android: [0, 0.4, 0.5, 0.6, 1], // Wide spread for 70% feathering
+            default: [0, 0.1, 0.5, 0.9, 1]
+          })}
+          start={{ x: 0, y: 0.5 }}
+          end={{ x: 1, y: 0.5 }}
+          style={StyleSheet.absoluteFill}
+        />
+      </Animated.View>
+      {/* Pink Glow - If female OR on timeline (ELEGANT BALANCE) */}
+      <Animated.View style={[StyleSheet.absoluteFill, { 
+        opacity: useDerivedValue(() => {
+          const isTimeline = state.routes[state.index].name === 'timeline';
+          const isFemale = currentUserProfile?.gender === 'Female';
+          return withSpring((isTimeline || isFemale) ? 1 : 0);
+        }) 
+      }]}>
+        <LinearGradient
+          colors={Platform.select({
+            android: [
+              'transparent', 
+              theme.heartPink + '40', 
+              theme.heartPink + 'A5', 
+              theme.heartPink + 'FF', 
+              theme.heartPink + 'A5', 
+              theme.heartPink + '40', 
+              'transparent'
+            ],
+            default: [
+              'transparent', 
+              theme.heartPink + '15', 
+              theme.heartPink + '40', 
+              theme.heartPink + '65', 
+              theme.heartPink + '40', 
+              theme.heartPink + '15', 
+              'transparent'
+            ]
+          })}
+          locations={Platform.select({
+            android: [0, 0.2, 0.35, 0.5, 0.65, 0.8, 1], // Softened spread for 70% feathering
+            default: [0, 0.1, 0.3, 0.5, 0.7, 0.9, 1]
+          })}
+          start={{ x: 0, y: 0.5 }}
+          end={{ x: 1, y: 0.5 }}
+          style={StyleSheet.absoluteFill}
+        />
+      </Animated.View>
+    </>
+  );
+};
+
 export const CustomTabBar = ({ state, descriptors, navigation }: BottomTabBarProps) => {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
@@ -127,12 +194,14 @@ export const CustomTabBar = ({ state, descriptors, navigation }: BottomTabBarPro
     <View style={[styles.container, { bottom: insets.bottom + 10 }]}>
       <View style={[styles.shadowWrapper, { shadowOpacity: theme.isDark ? 0.4 : 0.15 }]}>
         <BlurView 
-          intensity={Platform.OS === 'ios' ? (theme.isDark ? 55 : 35) : 45} // Subtle frosting for elegant definition
+          intensity={Platform.OS === 'ios' ? (theme.isDark ? 66 : 42) : 125}
           tint={theme.isDark ? 'dark' : 'light'}
           style={[
             styles.tabBar, 
             { 
-              backgroundColor: 'transparent', // Fully transparent glass
+              backgroundColor: Platform.OS === 'android' 
+                ? (theme.isDark ? 'rgba(0,0,0,0.14)' : 'rgba(255,255,255,0.14)') // Increased transparency by another 50% (0.27 -> 0.14)
+              : 'transparent',
               borderColor: theme.isDark ? 'rgba(255, 255, 255, 0.04)' : 'rgba(255, 255, 255, 0.05)',
               width: (width || Dimensions.get('window').width) * 0.9,
               minWidth: 320,
@@ -191,46 +260,15 @@ export const CustomTabBar = ({ state, descriptors, navigation }: BottomTabBarPro
                   return (isTimeline || isFemale) ? theme.heartPink : theme.primary;
                 }) as any }
               ]}>
-                {/* Primary Glow (Coral) - Only if not female AND not on timeline */}
-                <Animated.View style={[StyleSheet.absoluteFill, { 
-                  opacity: useDerivedValue(() => {
-                    const isTimeline = state.routes[state.index].name === 'timeline';
-                    const isFemale = currentUserProfile?.gender === 'Female';
-                    return withSpring((!isTimeline && !isFemale) ? 1 : 0);
-                  }) 
-                }]}>
-                  <LinearGradient
-                    colors={['transparent', theme.primary + '30', theme.primary + '60', theme.primary + '30', 'transparent']}
-                    locations={[0, 0.1, 0.5, 0.9, 1]}
-                    start={{ x: 0, y: 0.5 }}
-                    end={{ x: 1, y: 0.5 }}
-                    style={StyleSheet.absoluteFill}
-                  />
-                </Animated.View>
-                {/* Pink Glow - If female OR on timeline (ELEGANT BALANCE) */}
-                <Animated.View style={[StyleSheet.absoluteFill, { 
-                  opacity: useDerivedValue(() => {
-                    const isTimeline = state.routes[state.index].name === 'timeline';
-                    const isFemale = currentUserProfile?.gender === 'Female';
-                    return withSpring((isTimeline || isFemale) ? 1 : 0);
-                  }) 
-                }]}>
-                  <LinearGradient
-                    colors={[
-                      'transparent', 
-                      theme.heartPink + '15', 
-                      theme.heartPink + '40', 
-                      theme.heartPink + '65', // Soft, sophisticated core
-                      theme.heartPink + '40', 
-                      theme.heartPink + '15', 
-                      'transparent'
-                    ]}
-                    locations={[0, 0.1, 0.3, 0.5, 0.7, 0.9, 1]}
-                    start={{ x: 0, y: 0.5 }}
-                    end={{ x: 1, y: 0.5 }}
-                    style={StyleSheet.absoluteFill}
-                  />
-                </Animated.View>
+                {/* Layer 1 */}
+                <GlowLayers state={state} theme={theme} currentUserProfile={currentUserProfile} />
+                {/* Layer 2 & 3 (Android Only for extreme color saturation) */}
+                {Platform.OS === 'android' && (
+                  <>
+                    <GlowLayers state={state} theme={theme} currentUserProfile={currentUserProfile} />
+                    <GlowLayers state={state} theme={theme} currentUserProfile={currentUserProfile} />
+                  </>
+                )}
               </Animated.View>
               
               {/* WATER DROP STRUCTURE */}
@@ -471,12 +509,18 @@ const styles = StyleSheet.create({
     width: 70,
     height: 52,
     borderRadius: 26,
-    // Add ultra-soft depth to the active bubble
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    elevation: 6,
+    // Add ultra-soft depth to the active bubble (iOS only)
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.05,
+        shadowRadius: 10,
+      },
+      android: {
+        elevation: 0,
+      }
+    }),
     borderWidth: 0.5,
     overflow: 'hidden', // To clip the dropletHighlight
   },
@@ -490,13 +534,23 @@ const styles = StyleSheet.create({
   },
   scatterGlow: {
     position: 'absolute',
-    width: 145, // Balanced width
-    height: 95,
-    borderRadius: 47,
-    // Soft, delicate glow
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.3,
-    shadowRadius: 15,
+    // Sleek X-axis (20% increase from 91 -> 109)
+    ...Platform.select({
+      android: {
+        width: 109, 
+        height: 85, 
+        borderRadius: 42,
+        elevation: 0,
+      },
+      ios: {
+        width: 145,
+        height: 95,
+        borderRadius: 47,
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.3,
+        shadowRadius: 15,
+      },
+    }),
   },
   iconWrapper: {
     alignItems: 'center',

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Alert, ActivityIndicator, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -24,6 +24,25 @@ export const EditProfileScreen = () => {
   const [editGender, setEditGender] = useState(currentUserProfile?.gender || '');
   const [editDob, setEditDob] = useState(currentUserProfile?.dob || '');
   const [localPhotoUri, setLocalPhotoUri] = useState<string | null>(null);
+
+  // Sync local state when the store's profile is updated (e.g., after decryption secret loads)
+  useEffect(() => {
+    if (currentUserProfile) {
+      // Only sync if local state is empty or looks like an encrypted string
+      // Encrypted strings in this app typically start with Base64-like characters and are long
+      const isEncrypted = (str: string) => str.length > 30 && /^[a-zA-Z0-9+/=]+$/.test(str);
+
+      if (currentUserProfile.displayName && (!editName || editName === 'Unknown X_X')) {
+        setEditName(currentUserProfile.displayName);
+      }
+      if (currentUserProfile.gender && !editGender) {
+        setEditGender(currentUserProfile.gender);
+      }
+      if (currentUserProfile.dob && (!editDob || isEncrypted(editDob))) {
+        setEditDob(currentUserProfile.dob);
+      }
+    }
+  }, [currentUserProfile]);
 
   const handlePickImage = async () => {
     const uri = await imageService.pickAndCompressImage();
@@ -209,10 +228,29 @@ export const EditProfileScreen = () => {
             <TextInput
               style={[styles.input, { color: theme.text }]}
               value={editDob}
-              onChangeText={setEditDob}
+              onChangeText={(text) => {
+                // Handle deletion
+                if (text.length < editDob.length) {
+                  setEditDob(text);
+                  return;
+                }
+
+                // Auto-format DD/MM/YYYY
+                const cleaned = text.replace(/\D/g, '');
+                let formatted = cleaned;
+                
+                if (cleaned.length > 2) {
+                  formatted = `${cleaned.slice(0, 2)}/${cleaned.slice(2)}`;
+                }
+                if (cleaned.length > 4) {
+                  formatted = `${cleaned.slice(0, 2)}/${cleaned.slice(2, 4)}/${cleaned.slice(4, 8)}`;
+                }
+                setEditDob(formatted);
+              }}
               placeholder="DD/MM/YYYY"
               placeholderTextColor={theme.textLight}
               keyboardType="numeric"
+              maxLength={10}
             />
           </View>
         </View>

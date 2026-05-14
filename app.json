@@ -7,6 +7,9 @@
     },
     "android": {
       "package": "com.ripu.loveapp"
+    },
+    "ios": {
+      "bundleIdentifier": "com.ripu.loveapp"
     }
   }
 }

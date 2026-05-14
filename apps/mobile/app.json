@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Luvv",
-    "slug": "luvv",
+    "slug": "luvv-app",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/custom-icon.png",
@@ -24,12 +24,15 @@
       "infoPlist": {
         "UIBackgroundModes": [
           "location",
+          "fetch",
+          "location",
           "fetch"
         ],
         "CADisableMinimumFrameDurationOnPhone": true,
         "NSLocationWhenInUseUsageDescription": "Allow Love App to access your location while using the app.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Allow Love App to access your location always to keep you and your partner safe.",
-        "NSLocationAlwaysUsageDescription": "Allow Love App to access your location always to keep you and your partner safe."
+        "NSLocationAlwaysUsageDescription": "Allow Love App to access your location always to keep you and your partner safe.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -76,8 +79,7 @@
         "expo-build-properties",
         {
           "ios": {
-            "useFrameworks": "static",
-            "deploymentTarget": "15.1"
+            "deploymentTarget": "16.1"
           },
           "android": {
             "ndkVersion": "26.1.10909125"
@@ -101,7 +103,11 @@
       ],
       "@react-native-firebase/app",
       "@react-native-firebase/auth",
-      "@react-native-firebase/messaging"
+      "@react-native-firebase/messaging",
+      "react-native-quick-crypto",
+      "expo-secure-store",
+      "./hooks/withPodfileFix.js",
+      "./hooks/withNoPushEntitlement.js"
     ],
     "experiments": {
       "typedRoutes": true,
@@ -110,8 +116,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "d0270e1b-53d1-4493-83ed-e9c42f331499"
+        "projectId": "c182370f-c03f-48f9-af9e-14a5c5f9087e"
       }
-    }
+    },
+    "owner": "rikkhan111"
   }
 }

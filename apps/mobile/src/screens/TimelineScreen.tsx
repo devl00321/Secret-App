@@ -43,7 +43,7 @@ const MEMORY_THEMES = [
 
 export const TimelineScreen = () => {
   const theme = useTheme();
-  const { coupleId, user } = useAuthStore();
+  const { coupleId, user, sharedSecret } = useAuthStore();
   const [activities, setActivities] = useState<Activity[]>([]);
   const [loading, setLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
@@ -64,6 +64,17 @@ export const TimelineScreen = () => {
 
     return () => unsubscribe();
   }, [coupleId]);
+
+  // Re-decrypt existing activities when the secret becomes available
+  useEffect(() => {
+    if (sharedSecret && activities.length > 0) {
+      const reDecrypt = async () => {
+        const decrypted = await activityService.decryptActivities(activities, sharedSecret, coupleId || undefined);
+        setActivities(decrypted);
+      };
+      reDecrypt();
+    }
+  }, [sharedSecret]);
 
   const handleAddPhoto = async () => {
     try {

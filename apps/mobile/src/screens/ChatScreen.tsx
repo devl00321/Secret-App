@@ -25,6 +25,7 @@ import { useAuthStore } from '../store/useAuthStore';
 import { useChatStore } from '../store/chat';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTheme } from '../theme';
+import { useRouter } from 'expo-router';
 import Animated, { FadeIn } from 'react-native-reanimated';
 
 export const ChatScreen = () => {
@@ -37,7 +38,9 @@ export const ChatScreen = () => {
   const [selectedMessage, setSelectedMessage] = useState<{ id: string; text: string; isMe: boolean; imageUrl?: string; createdAt?: any } | null>(null);
   const [messagePosition, setMessagePosition] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
 
-  const { user, coupleId } = useAuthStore();
+  const { user, partner, coupleId, currentUserProfile, sharedSecret } = useAuthStore();
+  const partnerName = currentUserProfile?.partnerNickname || partner?.displayName || 'Private Chat';
+  const router = useRouter();
   const { 
     messages, 
     sendMessage, 
@@ -48,7 +51,8 @@ export const ChatScreen = () => {
     clearMessages, 
     deleteMessage, 
     markMessagesAsRead, 
-    deleteMessageLocally 
+    deleteMessageLocally,
+    reDecryptAllMessages
   } = useChatStore();
   const { readReceiptsEnabled } = useSettingsStore();
 
@@ -60,6 +64,13 @@ export const ChatScreen = () => {
     }
     return subscribeToMessages(coupleId, user.uid);
   }, [coupleId, user?.uid, clearMessages, subscribeToMessages]);
+  
+  // 1.5. Re-decrypt messages when secret becomes available
+  useEffect(() => {
+    if (sharedSecret && messages.length > 0) {
+      reDecryptAllMessages(sharedSecret);
+    }
+  }, [sharedSecret]);
 
   // 2. Mark messages as read when screen is focused
   useFocusEffect(
@@ -140,7 +151,7 @@ export const ChatScreen = () => {
   const renderEmptyState = () => (
     <View style={[
       styles.emptyContainer, 
-      Platform.OS === 'ios' && { transform: [{ scaleY: -1 }] }
+      { transform: [{ scaleY: -1 }] }
     ]}>
       <View style={[styles.emptyHeartWrapper, { backgroundColor: theme.surface, ...theme.shadows.soft }]}>
         <Heart size={40} color={theme.heartPink} fill={theme.heartPink} opacity={0.2} />
@@ -152,7 +163,12 @@ export const ChatScreen = () => {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
-      <Header title="Private Chat" showBack />
+      <Header 
+        title={partnerName} 
+        showBack 
+        onTitlePress={() => router.push('/partner-profile' as any)}
+        avatarUrl={partner?.photoURL}
+      />
       
       <View style={styles.chatContainer}>
         <TouchableOpacity 

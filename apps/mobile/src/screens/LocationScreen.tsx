@@ -15,7 +15,8 @@ import {
   X,
   Clock,
   BellOff,
-  VolumeX
+  VolumeX,
+  Route
 } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useTheme } from '../theme';
@@ -30,9 +31,18 @@ import { PartnerInfoSheet } from '../components/Location/PartnerInfoSheet';
 import { ReachSafelyMode } from '../components/Location/ReachSafelyMode';
 import { PingAnimation } from '../components/Location/PingAnimation';
 import { AddPlaceModal } from '../components/Location/AddPlaceModal';
+import { NavigationOverlay } from '../components/Location/NavigationOverlay';
 import * as Haptics from 'expo-haptics';
 import { GooglePlacesAutocomplete } from 'react-native-google-places-autocomplete';
 import { darkMapStyle } from '../theme/darkMapStyle';
+
+// Safe require for native modules to prevent crashes when rebuilding is needed
+let Speech: any = null;
+try {
+  Speech = require('expo-speech');
+} catch (e) {
+  console.warn('[LocationScreen] Could not require expo-speech:', e);
+}
 
 const GOOGLE_MAPS_APIKEY = Platform.select({
   ios: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_IOS,
@@ -66,7 +76,13 @@ export const LocationScreen = () => {
     partnerLastCompletedPath,
     partnerLastCompletedTime,
     incomingPing,
-    safetyInsight
+    safetyInsight,
+    navigationSteps,
+    isNavigating,
+    isVoiceEnabled,
+    setNavigationSteps,
+    setIsNavigating,
+    toggleVoice
   } = useLocationStore();
 
   const [showSettings, setShowSettings] = useState(false);
@@ -78,9 +94,12 @@ export const LocationScreen = () => {
   const [showPingAnim, setShowPingAnim] = useState(false);
   const [isSelectingLocation, setIsSelectingLocation] = useState(false);
   const [showAddPlaceModal, setShowAddPlaceModal] = useState(false);
+  const [showPath, setShowPath] = useState(false);
+  const [autoFollow, setAutoFollow] = useState(true);
   const [selectedCoords, setSelectedCoords] = useState<{ latitude: number, longitude: number } | null>(null);
   const [selectedLocationName, setSelectedLocationName] = useState<string | null>(null);
   const bannerPulse = useRef(new Animated.Value(1)).current;
+  const lastSpokenInstruction = useRef<string | null>(null);
   const partnerName = currentUserProfile?.partnerNickname || partner?.displayName || 'Partner';
 
   useEffect(() => {
@@ -115,6 +134,35 @@ export const LocationScreen = () => {
       bannerPulse.setValue(1);
     }
   }, [activeSos?.isActive]);
+  
+  useEffect(() => {
+    if (isNavigating && isVoiceEnabled && navigationSteps && navigationSteps.length > 0) {
+      const currentStep = navigationSteps[0];
+      const instruction = currentStep.html_instructions.replace(/<[^>]*>?/gm, '');
+      
+      if (instruction !== lastSpokenInstruction.current && Speech) {
+        lastSpokenInstruction.current = instruction;
+        try {
+          Speech.speak(instruction, {
+            language: 'en',
+            rate: 1.0,
+            pitch: 1.0,
+          });
+        } catch (e) {
+          console.warn('[Speech] speak failed:', e);
+        }
+      }
+    }
+    
+    if (!isNavigating && Speech) {
+      try {
+        Speech.stop();
+      } catch (e) {
+        // Ignore stop errors
+      }
+      lastSpokenInstruction.current = null;
+    }
+  }, [isNavigating, isVoiceEnabled, navigationSteps]);
 
   const startBannerPulse = () => {
     Animated.loop(
@@ -128,23 +176,42 @@ export const LocationScreen = () => {
   const centerOnUser = () => {
     if (userLocation && mapRef.current) {
       const coords = userLocation.coords || userLocation;
-      mapRef.current.animateToRegion({
-        latitude: coords.latitude,
-        longitude: coords.longitude,
-        latitudeDelta: 0.01,
-        longitudeDelta: 0.01,
-      }, 1000);
+      if (isNavigating) {
+        setAutoFollow(true);
+        mapRef.current.animateCamera({
+          center: { latitude: coords.latitude, longitude: coords.longitude },
+          pitch: 60,
+          heading: coords.heading || 0,
+          zoom: 18,
+        }, { duration: 1000 });
+      } else {
+        mapRef.current.animateToRegion({
+          latitude: coords.latitude,
+          longitude: coords.longitude,
+          latitudeDelta: 0.01,
+          longitudeDelta: 0.01,
+        }, 1000);
+      }
     }
   };
 
   const zoomToPartner = () => {
     if (partnerLocation && mapRef.current) {
-      mapRef.current.animateToRegion({
-        latitude: partnerLocation.latitude,
-        longitude: partnerLocation.longitude,
-        latitudeDelta: 0.005,
-        longitudeDelta: 0.005,
-      }, 1000);
+      if (isNavigating) {
+        mapRef.current.animateCamera({
+          center: { latitude: partnerLocation.latitude, longitude: partnerLocation.longitude },
+          pitch: 60,
+          heading: 0,
+          zoom: 18,
+        }, { duration: 1000 });
+      } else {
+        mapRef.current.animateToRegion({
+          latitude: partnerLocation.latitude,
+          longitude: partnerLocation.longitude,
+          latitudeDelta: 0.005,
+          longitudeDelta: 0.005,
+        }, 1000);
+      }
     }
   };
 
@@ -155,6 +222,22 @@ export const LocationScreen = () => {
         android: `google.navigation:q=${partnerLocation.latitude},${partnerLocation.longitude}`,
       });
       if (url) Linking.openURL(url);
+    }
+  };
+
+  const toggleNavigation = () => {
+    if (!partnerLocation) {
+      Alert.alert('Partner Not Found', 'We need your partner\'s location to start navigation.');
+      return;
+    }
+    
+    if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    
+    if (!isNavigating) {
+      setIsNavigating(true);
+      setShowPath(true); // Ensure path is visible for navigation
+    } else {
+      setIsNavigating(false);
     }
   };
 
@@ -182,7 +265,10 @@ export const LocationScreen = () => {
           destination={destination}
           GOOGLE_MAPS_APIKEY={GOOGLE_MAPS_APIKEY}
           onMapReady={() => {}}
-          updateMetrics={updateMetrics}
+          updateMetrics={(dist, dur, steps) => {
+            updateMetrics(dist, dur);
+            if (steps) setNavigationSteps(steps);
+          }}
           theme={theme}
           darkMapStyle={darkMapStyle}
           user={user}
@@ -206,6 +292,10 @@ export const LocationScreen = () => {
           onMarkerPress={() => setShowPartnerInfo(true)}
           partnerName={partnerName}
           isSelectingLocation={isSelectingLocation}
+          showPath={showPath}
+          isNavigating={isNavigating}
+          autoFollow={autoFollow}
+          setAutoFollow={setAutoFollow}
           walkSafePath={walkSafe?.path}
           partnerWalkSafePath={partnerWalkSafe?.path}
           lastCompletedPath={
@@ -248,21 +338,22 @@ export const LocationScreen = () => {
               </View>
               {safetyInsight && (
                 <View style={[
-                  styles.aiInsightBox, 
-                  { backgroundColor: safetyInsight.riskLevel === 'high' ? 'rgba(255, 59, 48, 0.05)' : 'rgba(0, 122, 255, 0.05)' }
+                  styles.aiCard,
+                  { backgroundColor: safetyInsight.status === 'alert' ? 'rgba(255, 59, 48, 0.05)' : safetyInsight.status === 'warning' ? 'rgba(255, 159, 10, 0.05)' : 'rgba(0, 122, 255, 0.05)' }
                 ]}>
                   <View style={styles.aiHeader}>
-                    <Shield size={14} color={safetyInsight.riskLevel === 'high' ? '#FF3B30' : '#007AFF'} />
+                    <Shield size={14} color={safetyInsight.status === 'alert' ? '#FF3B30' : safetyInsight.status === 'warning' ? '#FF9F0A' : '#007AFF'} />
                     <Text style={[
-                      styles.aiTitle, 
-                      { color: safetyInsight.riskLevel === 'high' ? '#FF3B30' : '#007AFF' }
-                    ]}>SAFETY GUARD INSIGHT</Text>
+                      styles.aiTitle,
+                      { color: safetyInsight.status === 'alert' ? '#FF3B30' : safetyInsight.status === 'warning' ? '#FF9F0A' : '#007AFF' }
+                    ]}>LUVV GUARD AI</Text>
                   </View>
-                  <Text style={styles.aiSummary}>{safetyInsight.summary}</Text>
-                  <View style={styles.aiSuggestion}>
-                    <Text style={styles.aiSuggestionLabel}>SUGGESTION: </Text>
-                    <Text style={styles.aiSuggestionText}>{safetyInsight.suggestion}</Text>
-                  </View>
+                  <Text style={styles.aiSummary}>{safetyInsight.message}</Text>
+                  {safetyInsight.suggestion && (
+                    <View style={styles.aiSuggestion}>
+                      <Text style={styles.aiSuggestionText}>{safetyInsight.suggestion}</Text>
+                    </View>
+                  )}
                 </View>
               )}
               <View style={styles.emergencyActions}>
@@ -316,55 +407,94 @@ export const LocationScreen = () => {
       )}
 
       {/* STANDARD UI */}
-      {!isPartnerSos && !isSelectingLocation && (
+      {!isPartnerSos && !isSelectingLocation && !isNavigating && (
         <SafeAreaView style={styles.overlay} pointerEvents="box-none">
           <View style={styles.topContainer}>
-            <View style={styles.topBar}>
-              <TouchableOpacity
-                style={[styles.iconButton, { backgroundColor: theme.surface }]}
-                onPress={() => setShowSettings(true)}
-                hitSlop={{ top: 25, bottom: 25, left: 25, right: 25 }}
-              >
-                <Settings size={22} color={theme.text} />
-              </TouchableOpacity>
-              
-              <View style={[styles.liveBadge, { backgroundColor: theme.surface }]}>
-                <View style={styles.pulseDot} />
-                <Text style={[styles.liveText, { color: theme.text }]}>Sharing Live</Text>
+              <View style={styles.topBar}>
+                <TouchableOpacity
+                  style={[styles.iconButton, { backgroundColor: theme.surface }]}
+                  onPress={() => setShowSettings(true)}
+                  hitSlop={{ top: 25, bottom: 25, left: 25, right: 25 }}
+                >
+                  <Settings size={22} color={theme.text} />
+                </TouchableOpacity>
+                
+                <View style={[styles.liveBadge, { backgroundColor: theme.surface }]}>
+                  <View style={styles.pulseDot} />
+                  <Text style={[styles.liveText, { color: theme.text }]}>Sharing Live</Text>
+                </View>
+
+                <TouchableOpacity
+                  style={[styles.iconButton, { backgroundColor: theme.surface }]}
+                  onPress={centerOnUser}
+                  hitSlop={{ top: 25, bottom: 25, left: 25, right: 25 }}
+                >
+                  <Navigation2 size={22} color={theme.text} style={{ transform: [{ rotate: '45deg' }] }} />
+                </TouchableOpacity>
               </View>
 
-              <TouchableOpacity
-                style={[styles.iconButton, { backgroundColor: theme.surface }]}
-                onPress={centerOnUser}
-                hitSlop={{ top: 25, bottom: 25, left: 25, right: 25 }}
-              >
-                <Navigation2 size={22} color={theme.text} style={{ transform: [{ rotate: '45deg' }] }} />
-              </TouchableOpacity>
-            </View>
+              <View style={styles.leftControl}>
+                <TouchableOpacity
+                  style={[styles.iconButton, { backgroundColor: theme.surface, marginBottom: 12 }]}
+                  onPress={() => setShowReachSafely(true)}
+                  hitSlop={{ top: 25, bottom: 25, left: 25, right: 25 }}
+                >
+                  <Shield size={22} color={theme.primary} />
+                </TouchableOpacity>
 
-            <View style={styles.leftControl}>
-              <TouchableOpacity
-                style={[styles.iconButton, { backgroundColor: theme.surface }]}
-                onPress={() => setShowReachSafely(true)}
-                hitSlop={{ top: 25, bottom: 25, left: 25, right: 25 }}
-              >
-                <Shield size={22} color={theme.primary} />
-              </TouchableOpacity>
-            </View>
+                <View style={{ marginBottom: 12 }}>
+                  <TouchableOpacity
+                    style={[styles.iconButton, { backgroundColor: showPath ? theme.primary : theme.surface }]}
+                    onPress={() => {
+                      setShowPath(!showPath);
+                      if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    }}
+                    hitSlop={{ top: 25, bottom: 25, left: 25, right: 25 }}
+                  >
+                    <Route size={22} color={showPath ? 'white' : theme.text} />
+                  </TouchableOpacity>
+                  
+                  {showPath && distanceToPartner !== null && (
+                    <View style={[styles.pathDistanceBadge, { 
+                      backgroundColor: theme.surface, 
+                      position: 'absolute', 
+                      left: 50, 
+                      top: 4, 
+                      marginTop: 0,
+                      width: 'auto',
+                      minWidth: 70,
+                      alignItems: 'center'
+                    }]}>
+                      <Text style={[styles.pathDistanceText, { color: theme.text }]}>
+                        {distanceToPartner < 1 ? `${Math.round(distanceToPartner * 1000)}m` : `${distanceToPartner.toFixed(1)}km`}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              </View>
 
-            <View style={styles.rightControl}>
-              <TouchableOpacity
-                style={[styles.iconButton, { backgroundColor: theme.surface }]}
-                onPress={() => setShowPartnerInfo(true)}
-                hitSlop={{ top: 25, bottom: 25, left: 25, right: 25 }}
-              >
-                <Heart size={22} color="#FF6B6B" fill="#FF6B6B" />
-              </TouchableOpacity>
+              <View style={styles.rightControl}>
+                <TouchableOpacity
+                  style={[styles.iconButton, { backgroundColor: theme.surface }]}
+                  onPress={() => setShowPartnerInfo(true)}
+                  hitSlop={{ top: 25, bottom: 25, left: 25, right: 25 }}
+                >
+                  <Heart size={22} color="#FF6B6B" fill="#FF6B6B" />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.iconButton, { backgroundColor: isNavigating ? theme.primary : theme.surface, marginTop: 12 }]}
+                  onPress={toggleNavigation}
+                  hitSlop={{ top: 25, bottom: 25, left: 25, right: 25 }}
+                >
+                  <Navigation2 size={22} color={isNavigating ? 'white' : theme.primary} />
+                </TouchableOpacity>
+              </View>
             </View>
-          </View>
           
           <View style={styles.bottomContainer} pointerEvents="box-none">
-            {isTripActive ? (
+            {!isNavigating && (
+              isTripActive ? (
               <ReachSafelyMode />
             ) : isIntercepting ? (
               <View style={[styles.interceptCard, { backgroundColor: theme.surface }]}>
@@ -519,7 +649,8 @@ export const LocationScreen = () => {
                     </TouchableOpacity>
                   </View>
                 )}
-              </View>
+                </View>
+              )
             )}
           </View>
         </SafeAreaView>
@@ -709,6 +840,20 @@ export const LocationScreen = () => {
         visible={showPingAnim} 
         onComplete={() => setShowPingAnim(false)} 
       />
+
+      {isNavigating && (
+        <NavigationOverlay
+          steps={navigationSteps}
+          distance={distanceToPartner}
+          eta={etaToPartner}
+          onClose={() => setIsNavigating(false)}
+          partnerName={partnerName}
+          onRecenter={centerOnUser}
+          onCenterPartner={zoomToPartner}
+          isVoiceEnabled={isVoiceEnabled}
+          onToggleVoice={toggleVoice}
+        />
+      )}
     </View>
   );
 };
@@ -723,7 +868,20 @@ const styles = StyleSheet.create({
   liveBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 5 },
   pulseDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#FF3B30', marginRight: 6 },
   liveText: { fontSize: 13, fontWeight: '700' },
-  leftControl: { position: 'absolute', top: 70, left: 20 },
+  leftControl: { position: 'absolute', top: 70, left: 20, alignItems: 'center' },
+  pathDistanceBadge: { 
+    marginTop: 8, 
+    paddingHorizontal: 8, 
+    paddingVertical: 4, 
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.05)'
+  },
+  pathDistanceText: { fontSize: 10, fontWeight: '800' },
   rightControl: { position: 'absolute', top: 70, right: 20 },
   bottomContainer: { paddingHorizontal: 20, paddingBottom: 110 },
   searchBarContainer: { 
@@ -900,7 +1058,7 @@ const styles = StyleSheet.create({
   panelHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
   statusDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#FF3B30', marginRight: 10 },
   panelTitle: { fontSize: 18, fontWeight: '800', color: '#1a1a1a' },
-  aiInsightBox: {
+  aiCard: {
     padding: 14,
     borderRadius: 16,
     marginBottom: 20,

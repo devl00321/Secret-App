@@ -313,7 +313,11 @@ export const HomeScreen = () => {
                 end={{ x: 1, y: 1 }}
               >
                 <View style={styles.cardHeader}>
-                  <View style={styles.avatarContainerLarge}>
+                  <TouchableOpacity 
+                    activeOpacity={0.8}
+                    onPress={() => router.push('/partner-profile' as any)}
+                    style={styles.avatarContainerLarge}
+                  >
                     <View style={[styles.avatarLarge, { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
                       {partner?.photoURL ? (
                         <Image 
@@ -326,7 +330,7 @@ export const HomeScreen = () => {
                       )}
                     </View>
                     <View style={[styles.statusIndicator, { backgroundColor: partnerStatus === 'online' ? theme.success : '#AAA' }]} />
-                  </View>
+                  </TouchableOpacity>
                   
                   <View style={styles.infoContainer}>
                     <View style={styles.nameRow}>

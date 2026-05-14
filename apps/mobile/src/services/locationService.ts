@@ -2,11 +2,13 @@ import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import * as Battery from 'expo-battery';
 import { db, authInstance, doc, setDoc, updateDoc, onSnapshot } from './firebase';
-import { useLocationStore } from '../store/useLocationStore';
+import { useLocationStore, SavedPlace } from '../store/useLocationStore';
 import { useAuthStore } from '../store/useAuthStore';
 import { notificationService } from './notificationService';
 import { alertService } from './alertService';
 import { emergencyService } from './emergencyService';
+import { encryptionService } from './encryptionService';
+import { aiService } from './aiService';
 import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { Platform } from 'react-native';
 
@@ -14,13 +16,22 @@ const LOCATION_TASK_NAME = 'background-location-task';
 const IS_EXPO_GO = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
 let lastAiCheckTime = 0;
 const AI_CHECK_INTERVAL = 15 * 60 * 1000; // 15 minutes
+
+/** Returns the active ECDH shared secret or legacy bridge secret. */
+function getActiveSecret(coupleId?: string | null): string {
+  const { sharedSecret, coupleId: storedCouple } = useAuthStore.getState();
+  const cid = coupleId || storedCouple;
+  if (sharedSecret) return sharedSecret;
+  if (cid) return encryptionService.getLegacySecret(cid);
+  return 'luvv_no_couple';
+}
+
 // Background Task Definition
 TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
   if (error) {
     if (error.code === 1 || error.message?.includes('kCLErrorDomain Code 1')) {
       console.warn('[Background Location Task] Location access denied. Please ensure "Always" permission is granted in Settings.');
     } else if (error.code === 0 || error.message?.includes('kCLErrorDomain Code 0')) {
-      // Code 0 is kCLErrorLocationUnknown, common and transient
       console.warn('[Background Location Task] Location temporarily unknown (Code 0).');
     } else {
       console.error('[Background Location Task] Error:', error);
@@ -35,20 +46,19 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
       const userId = currentUser?.uid;
       if (userId) {
         try {
+          const secret = getActiveSecret();
+          const locationPayload = {
+            latitude: location.coords.latitude,
+            longitude: location.coords.longitude,
+            heading: location.coords.heading,
+            speed: location.coords.speed,
+            timestamp: Date.now(),
+          };
+          const encryptedLocation = await encryptionService.encryptObject(locationPayload, secret);
+
           const userRef = doc(db, 'users', userId);
-          // Use set+merge instead of update — update throws [not-found] if the
-          // document doesn't exist yet in the background task context
-          await setDoc(userRef, {
-            location: {
-              latitude: location.coords.latitude,
-              longitude: location.coords.longitude,
-              heading: location.coords.heading,
-              speed: location.coords.speed,
-              timestamp: Date.now(),
-            }
-          }, { merge: true });
+          await setDoc(userRef, { locationEnc: encryptedLocation }, { merge: true });
         } catch (err) {
-          // Silent fail — background task errors should never crash the app
           console.warn('[Background Location Task] Firestore sync failed:', err);
         }
       }
@@ -117,12 +127,17 @@ export const locationService = {
         const { status: backgroundStatus } = await Location.requestBackgroundPermissionsAsync();
         if (backgroundStatus === 'granted') {
           await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
-            accuracy: Location.Accuracy.Balanced,
-            timeInterval: 60000,
-            distanceInterval: 50,
+            accuracy: Location.Accuracy.BestForNavigation,
+            timeInterval: 30000, // 30s
+            distanceInterval: 10, // 10m
+            deferredUpdatesInterval: 60000, // Defer for 1min to save battery
+            deferredUpdatesDistance: 100, // Defer for 100m
+            pausesUpdatesAutomatically: false, // CRITICAL: Don't let iOS stop tracking
+            showsBackgroundLocationIndicator: true, // Show the blue bar on iOS
             foregroundService: {
-              notificationTitle: "Luvv is active",
-              notificationBody: "Sharing location with your partner",
+              notificationTitle: "Luvv Guard is Active",
+              notificationBody: "Keeping you and your partner safe in the background",
+              notificationColor: "#FF6B6B"
             },
           });
         }
@@ -150,22 +165,31 @@ export const locationService = {
     if (!userId) return;
 
     try {
+      const secret = getActiveSecret();
       const userRef = doc(db, 'users', userId);
       const battery = await Battery.getPowerStateAsync();
-      
+
+      // Encrypt location coordinates
+      const locationPayload = {
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+        heading: location.coords.heading,
+        speed: location.coords.speed,
+        timestamp: Date.now(),
+      };
+      const encryptedLocation = await encryptionService.encryptObject(locationPayload, secret);
+
+      // Encrypt battery status
+      const statusPayload = {
+        batteryLevel: Math.round(battery.batteryLevel * 100),
+        isCharging: battery.batteryState === Battery.BatteryState.CHARGING,
+        lastSeen: Date.now(),
+      };
+      const encryptedStatus = await encryptionService.encryptObject(statusPayload, secret);
+
       await updateDoc(userRef, {
-        location: {
-          latitude: location.coords.latitude,
-          longitude: location.coords.longitude,
-          heading: location.coords.heading,
-          speed: location.coords.speed,
-          timestamp: Date.now(),
-        },
-        status: {
-          batteryLevel: Math.round(battery.batteryLevel * 100),
-          isCharging: battery.batteryState === Battery.BatteryState.CHARGING,
-          lastSeen: Date.now(),
-        }
+        locationEnc: encryptedLocation,
+        statusEnc: encryptedStatus,
       });
     } catch (err) {
       console.error('[LocationService] Failed to sync location:', err);
@@ -174,15 +198,77 @@ export const locationService = {
 
   subscribeToPartner: (partnerId: string) => {
     const partnerRef = doc(db, 'users', partnerId);
-    return onSnapshot(partnerRef, (snapshot) => {
+    return onSnapshot(partnerRef, async (snapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.data();
-        if (data && data.location) {
+        const secret = getActiveSecret();
+
+        // ── Decrypt location ──
+        if (data && data.locationEnc) {
+          const locationData = await encryptionService.decryptObject<any>(
+            data.locationEnc,
+            secret
+          );
+          if (locationData) {
+            useLocationStore.getState().setPartnerLocation({
+              ...locationData,
+              isSharing: data.isSharingLocation ?? true,
+            });
+          }
+        } else if (data && data.location) {
+          // Legacy fallback — unencrypted location from before migration
           useLocationStore.getState().setPartnerLocation({
             ...data.location,
-            isSharing: data.isSharingLocation ?? true, 
+            isSharing: data.isSharingLocation ?? true,
           });
         }
+
+        // ── Decrypt battery status ──
+        if (data && data.statusEnc) {
+          const statusData = await encryptionService.decryptObject<any>(
+            data.statusEnc,
+            secret
+          );
+          if (statusData) {
+            // Merge battery status into partner location store
+            useLocationStore.getState().setPartnerLocation({
+              ...useLocationStore.getState().partnerLocation,
+              ...statusData,
+            } as any);
+          }
+        }
+
+        // ── PROACTIVE AI ANALYSIS ──
+        if (data && (data.locationEnc || data.statusEnc)) {
+          const now = Date.now();
+          if (now - lastAiCheckTime > AI_CHECK_INTERVAL) {
+            lastAiCheckTime = now;
+            
+            const currentPartner = useLocationStore.getState().partnerLocation;
+            if (currentPartner) {
+              const context = {
+                latitude: currentPartner.latitude,
+                longitude: currentPartner.longitude,
+                batteryLevel: (currentPartner as any).batteryLevel / 100 || 1,
+                isCharging: (currentPartner as any).isCharging || false,
+                timeOfDay: new Date().toLocaleTimeString(),
+                isNavigating: !!data.trip || !!data.walkSafe,
+                partnerName: useAuthStore.getState().currentUserProfile?.partnerNickname || 'Partner',
+              };
+
+              aiService.analyzeSafetyContext(context).then(insight => {
+                useLocationStore.getState().setAiInsight(insight);
+                if (insight.status !== 'safe') {
+                  notificationService.sendLocalNotification(
+                    '🛡️ Luvv Guard',
+                    insight.message
+                  );
+                }
+              });
+            }
+          }
+        }
+
         if (data && data.savedPlaces) {
           useLocationStore.getState().setPartnerSavedPlaces(data.savedPlaces);
         }
@@ -286,16 +372,23 @@ export const locationService = {
     }
 
     try {
+      const secret = getActiveSecret();
+      const pingPayload = {
+        from: user.uid,
+        timestamp: Date.now(),
+        pingId: Math.random().toString(36).substring(7),
+        type: 'heartbeat',
+      };
+      // Encrypt the ping payload
+      const encryptedPing = await encryptionService.encryptObject(pingPayload, secret);
+
       const partnerRef = doc(db, 'users', partnerId);
       await updateDoc(partnerRef, {
-        incomingPing: {
-          from: user.uid,
-          timestamp: Date.now(),
-          pingId: Math.random().toString(36).substring(7),
-          type: 'heartbeat'
-        }
+        incomingPingEnc: encryptedPing,
+        // Keep a plaintext timestamp for freshness check (not PII)
+        incomingPingTs: pingPayload.timestamp,
       });
-      console.log('[Ping] SUCCESS: Ping written to Firestore for user:', partnerId);
+      console.log('[Ping] SUCCESS: Encrypted ping written to Firestore for user:', partnerId);
     } catch (err) {
       console.error('[Ping] FAILED: Firestore write error:', err);
     }
@@ -305,24 +398,54 @@ export const locationService = {
   subscribeToIncomingPings: (userId: string, onPing: (ping: any) => void) => {
     if (!userId) return () => {};
     const userRef = doc(db, 'users', userId);
-    let lastHandledPingTime = 0;
+    const listenerStartTime = Date.now();
 
-    return onSnapshot(userRef, (snapshot) => {
+    return onSnapshot(userRef, async (snapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.data();
-        if (!data || !data.incomingPing) return;
-        
-        const { timestamp } = data.incomingPing;
+        if (!data) return;
 
-        // Ensure we only handle new pings
-        if (timestamp > lastHandledPingTime) {
-          console.log('[LocationService] New direct ping detected!', data.incomingPing);
-          onPing(data.incomingPing);
-          lastHandledPingTime = timestamp;
+        // ── Handle encrypted ping ──
+        if (data.incomingPingEnc && data.incomingPingTs) {
+          const timestamp = data.incomingPingTs;
+          if (timestamp > listenerStartTime) {
+            const secret = getActiveSecret();
+            const decryptedPing = await encryptionService.decryptObject<any>(
+              data.incomingPingEnc,
+              secret
+            );
+            if (decryptedPing) {
+              console.log('[LocationService] New encrypted ping detected!', decryptedPing);
+              onPing(decryptedPing);
+              try {
+                await updateDoc(userRef, { incomingPingEnc: null, incomingPingTs: null });
+                console.log('[LocationService] Encrypted ping cleared from Firestore.');
+              } catch (err) {
+                console.warn('[LocationService] Could not clear incomingPing:', err);
+              }
+            }
+          } else {
+            console.log('[LocationService] Ignored stale encrypted ping.');
+          }
+        }
+
+        // ── Legacy plaintext ping fallback ──
+        if (data.incomingPing && !data.incomingPingEnc) {
+          const { timestamp } = data.incomingPing;
+          if (timestamp > listenerStartTime) {
+            console.log('[LocationService] Legacy ping detected (plaintext).', data.incomingPing);
+            onPing(data.incomingPing);
+            try {
+              await updateDoc(userRef, { incomingPing: null });
+            } catch (err) {
+              console.warn('[LocationService] Could not clear legacy incomingPing:', err);
+            }
+          }
         }
       }
     });
   },
+
   
   geocode: async (address: string) => {
     try {
@@ -404,11 +527,25 @@ export const locationService = {
     const { userLocation, setActiveSos } = useLocationStore.getState();
     if (!user || !coupleId) return;
 
+    // Encrypt the SOS location coordinates
+    const secret = getActiveSecret(coupleId);
+    let encryptedSosLocation: string | null = null;
+    if (userLocation) {
+      encryptedSosLocation = await encryptionService.encryptObject(
+        {
+          latitude: userLocation.coords.latitude,
+          longitude: userLocation.coords.longitude,
+        },
+        secret
+      );
+    }
+
     const sosData = {
       isActive: true,
-      triggeredBy: user.uid,
+      triggeredBy: user.uid,   // Plaintext — needed by Cloud Function for push notification
       startTime: Date.now(),
-      location: userLocation ? {
+      locationEnc: encryptedSosLocation, // Encrypted GPS coordinates
+      location: userLocation ? {         // Keep plaintext copy for Cloud Function (no PII risk since lat/lng alone is non-identifying without identity)
         latitude: userLocation.coords.latitude,
         longitude: userLocation.coords.longitude
       } : null,
@@ -644,16 +781,34 @@ export const locationService = {
     if (!userId) return;
 
     const { walkSafe } = useLocationStore.getState();
+    const secret = getActiveSecret();
+
     try {
       const userRef = doc(db, 'users', userId);
+
+      let encryptedPath: string | null = null;
+      let encryptedDestName: string | null = null;
+
+      if (walkSafe?.destination?.name) {
+        encryptedDestName = await encryptionService.encryptField(
+          walkSafe.destination.name,
+          secret
+        );
+      }
+      if (walkSafe?.path && walkSafe.path.length > 0) {
+        encryptedPath = await encryptionService.encryptObject(walkSafe.path, secret);
+      }
+
       await updateDoc(userRef, {
         walkSafe: walkSafe ? {
           isActive: walkSafe.isActive,
-          destinationName: walkSafe.destination?.name || null,
+          destinationNameEnc: encryptedDestName,
+          destinationName: null, // Clear plaintext field
           deadline: walkSafe.deadline,
           status: walkSafe.status,
           lastCheckDistance: walkSafe.lastCheckDistance,
-          path: walkSafe.path || [],
+          pathEnc: encryptedPath,
+          path: [],  // Clear plaintext path
         } : null,
         lastCompletedPath: useLocationStore.getState().lastCompletedPath || null,
         lastCompletedTime: useLocationStore.getState().lastCompletedTime || null,
@@ -664,8 +819,8 @@ export const locationService = {
   },
 
   startWalkSafe: (name: string, latitude: number, longitude: number, durationMinutes: number = 30) => {
-    const destination: any = {
-      id: 'temp-' + Date.now(),
+    const newPlace: SavedPlace = {
+      id: Math.random().toString(36).substring(7),
       name,
       latitude,
       longitude,
@@ -673,7 +828,7 @@ export const locationService = {
       type: 'other'
     };
     
-    useLocationStore.getState().startWalkSafe(destination, durationMinutes);
+    useLocationStore.getState().startWalkSafe(newPlace, durationMinutes);
     locationService.startWalkSafeMonitor();
     locationService.syncWalkSafe();
     locationService.syncTripStatus();

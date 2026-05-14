@@ -16,7 +16,7 @@ LogBox.ignoreLogs([
 import 'react-native-reanimated';
 import { authInstance, serverTimestamp, db, collection, doc, onSnapshot } from '../src/services/firebase';
 import { onAuthStateChanged } from '@react-native-firebase/auth';
-import appCheck from '@react-native-firebase/app-check';
+import appCheck, { initializeAppCheck } from '@react-native-firebase/app-check';
 import { useLocationStore } from '../src/store/useLocationStore';
 import { alertService } from '../src/services/alertService';
 import { notificationService } from '../src/services/notificationService';
@@ -24,6 +24,7 @@ import { Vibration, Platform } from 'react-native';
 import { useAuthStore } from '../src/store/useAuthStore';
 import { userService } from '../src/services/userService';
 import { locationService } from '../src/services/locationService';
+import { pairingService } from '../src/services/pairingService';
 
 // Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync().catch(() => {
@@ -47,7 +48,7 @@ try {
       siteKey: 'unknown'
     }
   });
-  appCheck().initializeAppCheck({ provider: rnfbProvider, isTokenAutoRefreshEnabled: true });
+  initializeAppCheck(undefined, { provider: rnfbProvider, isTokenAutoRefreshEnabled: true });
 } catch (e) {
   console.warn('App Check initialization failed:', e);
 }
@@ -68,8 +69,10 @@ export default function RootLayout() {
     setCurrentUserProfile,
     setPartner, 
     setCoupleId, 
+    setSharedSecret,
     setLoading, 
-    coupleId 
+    coupleId,
+    loadSharedSecret,
   } = useAuthStore();
 
   useEffect(() => {
@@ -85,9 +88,12 @@ export default function RootLayout() {
       setUser(firebaseUser);
       
       if (!firebaseUser) {
-        // User logged out
+        // User logged out — Clear everything immediately
+        setUser(null);
+        setCurrentUserProfile(null);
         setPartner(null);
         setCoupleId(null);
+        setSharedSecret(null);
         userUnsubscribe();
         setLoading(false);
         setIsReady(true);
@@ -103,16 +109,18 @@ export default function RootLayout() {
         userUnsubscribe = onSnapshot(userDocRef, async (snapshot) => {
           if (snapshot.exists()) {
             const data = snapshot.data();
+            // Decrypt profile fields (DOB, Nickname, etc.)
+            const decryptedData = await userService.decryptProfile(data);
             
             // CRITICAL: Preserve the anniversaryDate if it's already in the store (from couple doc)
             const currentStoreProfile = useAuthStore.getState().currentUserProfile;
             const mergedProfile = {
-              ...data,
-              anniversaryDate: currentStoreProfile?.anniversaryDate || data?.anniversaryDate
+              ...decryptedData,
+              anniversaryDate: currentStoreProfile?.anniversaryDate || decryptedData?.anniversaryDate
             } as import('../src/services/userService').PartnerProfile;
 
             setCurrentUserProfile(mergedProfile);
-            setCoupleId(data?.coupleId || null);
+            setCoupleId(decryptedData?.coupleId || null);
             
             // Sync saved places from Firestore to LocationStore
             if (data?.savedPlaces) {
@@ -204,22 +212,43 @@ export default function RootLayout() {
     };
   }, [coupleId, user?.uid, currentUserProfile?.partnerId]);
 
-  // 1.2 Couple Data Listener (Source of truth for shared info like anniversary)
+  // 1.2 Encryption — Load Shared Secret whenever coupleId is known
   useEffect(() => {
     if (!coupleId) return;
+    loadSharedSecret(coupleId);
+  }, [coupleId]);
+
+  // 1.3 Couple Data Listener (Source of truth for shared info like anniversary + key exchange signal)
+  useEffect(() => {
+    if (!coupleId || !user?.uid) return;
 
     const coupleDocRef = doc(db, 'couples', coupleId);
     const unsubscribe = onSnapshot(coupleDocRef,
-      (snapshot) => {
+      async (snapshot) => {
         if (snapshot && snapshot.exists()) {
           const data = snapshot.data();
+
+          // ── Anniversary date sync ──
           if (data && data.anniversaryDate) {
-            // Sync to store immediately so components can use it
             useAuthStore.setState(state => ({
               currentUserProfile: state.currentUserProfile 
                 ? { ...state.currentUserProfile, anniversaryDate: data.anniversaryDate }
                 : null
             }));
+          }
+
+          // ── Key Exchange Signal: The invite creator completes their ECDH here ──
+          // When the joiner writes keyExchangeSignal, the creator (who is listening)
+          // detects it and derives their side of the shared secret.
+          if (data?.keyExchangeSignal) {
+            const existingSecret = await import('../src/services/encryptionService')
+              .then(({ encryptionService }) => encryptionService.loadSharedSecret(coupleId));
+            if (!existingSecret) {
+              console.log('[RootLayout] 🔑 Key exchange signal detected — finalizing ECDH for creator.');
+              pairingService.finalizeKeyExchange(coupleId, user.uid).then(() => {
+                loadSharedSecret(coupleId);
+              });
+            }
           }
         }
       },
@@ -229,7 +258,7 @@ export default function RootLayout() {
     );
 
     return () => unsubscribe();
-  }, [coupleId]);
+  }, [coupleId, user?.uid]);
 
   // 2. Navigation Control
   useEffect(() => {
@@ -243,7 +272,8 @@ export default function RootLayout() {
     const profileComplete = currentUserProfile?.profileSetupComplete;
 
     if (!user) {
-      // If not logged in, ensure we are in the auth group
+      // If not logged in, allow access to all auth screens (phone, email, otp, index)
+      // Only redirect if we are outside the auth group entirely
       if (!inAuthGroup) {
         router.replace('/(auth)');
       }

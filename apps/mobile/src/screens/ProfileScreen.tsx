@@ -44,59 +44,6 @@ export const ProfileScreen = () => {
     }
   };
 
-  const handleDeleteAccount = async () => {
-    if (!user?.uid) return;
-
-    Alert.alert(
-      "Delete Account?",
-      "This will permanently erase your profile and messages. Your partner will also be unpaired. This action cannot be undone.",
-      [
-        { text: "Cancel", style: "cancel" },
-        { 
-          text: "Delete My Account", 
-          style: "destructive",
-          onPress: async () => {
-            // Second confirmation for such a destructive action
-            Alert.alert(
-              "Final Confirmation",
-              "Are you absolutely sure? Everything will be lost.",
-              [
-                { text: "No, keep it", style: "cancel" },
-                {
-                  text: "Yes, Delete Everything",
-                  style: "destructive",
-                  onPress: async () => {
-                    try {
-                      if (Platform.OS !== 'web') {
-                        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-                      }
-                      await userService.deleteUserAccount(user.uid, currentUserProfile?.partnerId || null, currentUserProfile?.coupleId || null);
-                      // Clear store and redirect
-                      setCoupleId(null);
-                      setPartner(null);
-                      setCurrentUserProfile(null);
-                      setUser(null);
-                      router.replace('/(auth)');
-                    } catch (e: any) {
-                      if (e.code === 'auth/requires-recent-login' || e.message?.includes('requires-recent-login')) {
-                        Alert.alert(
-                          "Security Check", 
-                          "For your protection, deleting your account requires a recent login. Please log out and log back in, then try again.",
-                          [{ text: "OK", onPress: () => logout() }]
-                        );
-                      } else {
-                        Alert.alert("Error", "Failed to delete account. Please try again later.");
-                      }
-                    }
-                  }
-                }
-              ]
-            );
-          }
-        }
-      ]
-    );
-  };
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
@@ -220,16 +167,6 @@ export const ProfileScreen = () => {
           textStyle={{ color: '#FF4747', fontWeight: '800' }}
         />
 
-        <Text style={[styles.sectionTitle, { color: '#FF4747', marginTop: 24 }]}>Danger Zone</Text>
-        <Card style={[styles.settingsCard, { borderColor: 'rgba(255, 71, 71, 0.2)', borderWidth: 1 }]}>
-          <TouchableOpacity 
-            style={[styles.accountItem, styles.noBorder]}
-            onPress={handleDeleteAccount}
-          >
-            <X size={20} color="#FF4747" />
-            <Text style={[styles.accountLabel, { color: '#FF4747' }]}>Delete Account Permanently</Text>
-          </TouchableOpacity>
-        </Card>
         
         <Text style={styles.versionText}>LUVV Premium • v1.2.0</Text>
       </ScrollView>
@@ -450,6 +387,7 @@ const styles = StyleSheet.create({
   logoutButton: {
     marginTop: 20,
     backgroundColor: 'rgba(255, 71, 71, 0.05)',
+    borderRadius: 24,
   },
   versionText: {
     textAlign: 'center',

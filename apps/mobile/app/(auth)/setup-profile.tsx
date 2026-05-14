@@ -23,7 +23,7 @@ import { useTheme } from '../../src/theme';
 
 export default function SetupProfileScreen() {
   const theme = useTheme();
-  const { user, setCurrentUserProfile } = useAuthStore();
+  const { user, setCurrentUserProfile, logout } = useAuthStore();
   const [name, setName] = useState(user?.displayName || '');
   const [phoneNumber, setPhoneNumber] = useState(user?.phoneNumber ? user.phoneNumber.replace('+91', '') : '');
   const [gender, setGender] = useState('');
@@ -92,13 +92,7 @@ export default function SetupProfileScreen() {
           text: 'Sign Out', 
           style: 'destructive', 
           onPress: async () => {
-            try {
-              if (authInstance.currentUser) {
-                await signOut(authInstance);
-              }
-            } catch (err) {
-              console.error('Sign out error:', err);
-            }
+            await logout();
           } 
         }
       ]
@@ -220,30 +214,23 @@ export default function SetupProfileScreen() {
                   maxLength={10}
                   value={dob}
                   onChangeText={(text) => {
-                    let cleaned = text.replace(/[^\d/]/g, '');
-                    
-                    // Split into parts to validate numbers in real-time
-                    const parts = cleaned.split('/');
-                    
-                    // Validate Day (Max 31)
-                    if (parts[0] && parts[0].length === 2 && parseInt(parts[0]) > 31) {
-                      parts[0] = '31';
+                    // Handle deletion
+                    if (text.length < dob.length) {
+                      setDob(text);
+                      return;
                     }
-                    
-                    // Validate Month (Max 12)
-                    if (parts[1] && parts[1].length === 2 && parseInt(parts[1]) > 12) {
-                      parts[1] = '12';
-                    }
-                    
-                    // Re-join for formatting logic
-                    cleaned = parts.join('/');
 
-                    if (cleaned.length === 2 && dob.length === 1 && !cleaned.includes('/')) {
-                      cleaned += '/';
-                    } else if (cleaned.length === 5 && dob.length === 4 && cleaned.split('/').length === 2) {
-                      cleaned += '/';
+                    // Auto-format DD/MM/YYYY
+                    const cleaned = text.replace(/\D/g, '');
+                    let formatted = cleaned;
+                    
+                    if (cleaned.length > 2) {
+                      formatted = `${cleaned.slice(0, 2)}/${cleaned.slice(2)}`;
                     }
-                    setDob(cleaned);
+                    if (cleaned.length > 4) {
+                      formatted = `${cleaned.slice(0, 2)}/${cleaned.slice(2, 4)}/${cleaned.slice(4, 8)}`;
+                    }
+                    setDob(formatted);
                   }}
                 />
               </View>
