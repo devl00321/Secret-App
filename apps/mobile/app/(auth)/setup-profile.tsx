@@ -47,8 +47,24 @@ export default function SetupProfileScreen() {
         return;
       }
       const [d, m, y] = dob.split('/').map(Number);
-      if (d > 31 || m > 12 || y < 1900 || y > new Date().getFullYear()) {
-        Alert.alert('Invalid Date', 'Please enter a realistic date of birth.');
+      const today = new Date();
+      const birthDate = new Date(y, m - 1, d);
+      
+      // Basic validity check
+      if (d > 31 || m > 12 || y < 1920 || y > today.getFullYear()) {
+        Alert.alert('Invalid Date', 'Please enter a valid date of birth.');
+        return;
+      }
+
+      // Age verification (16+)
+      let age = today.getFullYear() - y;
+      const monthDiff = today.getMonth() - (m - 1);
+      if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < d)) {
+        age--;
+      }
+
+      if (age < 16) {
+        Alert.alert("Error", "Sorry, but you're not eligible to use this app.");
         return;
       }
     }
@@ -102,7 +118,7 @@ export default function SetupProfileScreen() {
   const genders = ['Male', 'Female', 'Non-binary', 'Prefer not to say'];
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.background }]}>
+    <View style={[styles.container, { backgroundColor: theme.bgPrimary }]}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={{ flex: 1 }}
@@ -116,7 +132,7 @@ export default function SetupProfileScreen() {
         >
           <View style={styles.headerContainer}>
             <LinearGradient
-              colors={[theme.primary, theme.primary + 'EE']}
+              colors={[theme.accentRose, theme.accentRose + 'EE']}
               style={styles.headerGradient}
               start={{ x: 0, y: 0 }}
               end={{ x: 0, y: 1 }}
@@ -132,10 +148,10 @@ export default function SetupProfileScreen() {
               
               <Animated.View entering={FadeIn.duration(800)} style={styles.headerContent}>
                 <View style={styles.logoBadge}>
-                  <Smile size={32} color={theme.primary} />
+                  <Smile size={32} color={theme.accentRose} />
                 </View>
                 <Text style={styles.title}>About You</Text>
-                <Text style={styles.subtitle}>Let's set up your profile before connecting.</Text>
+                <Text style={styles.subtitle}>Let&apos;s set up your profile before connecting.</Text>
               </Animated.View>
             </SafeAreaView>
           </View>
@@ -143,13 +159,13 @@ export default function SetupProfileScreen() {
           <View style={styles.mainContent}>
             {/* Name Input */}
             <Animated.View entering={FadeInDown.delay(200)} style={styles.section}>
-              <Text style={[styles.sectionLabel, { color: theme.textLight }]}>What should we call you?</Text>
-              <View style={[styles.inputGroup, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-                <User size={20} color={theme.textLight} style={styles.inputIcon} />
+              <Text style={[styles.sectionLabel, { color: theme.textSecondary }]}>What should we call you?</Text>
+              <View style={[styles.inputGroup, { backgroundColor: theme.bgSurface, borderColor: theme.borderDefault }]}>
+                <User size={20} color={theme.textSecondary} style={styles.inputIcon} />
                 <TextInput
-                  style={[styles.input, { color: theme.text }]}
+                  style={[styles.input, { color: theme.textPrimary }]}
                   placeholder="Your Name"
-                  placeholderTextColor={theme.textLight + '70'}
+                  placeholderTextColor={theme.textSecondary + '70'}
                   value={name}
                   onChangeText={setName}
                 />
@@ -158,43 +174,43 @@ export default function SetupProfileScreen() {
 
             {/* Phone Number Input */}
             <Animated.View entering={FadeInDown.delay(250)} style={styles.section}>
-              <Text style={[styles.sectionLabel, { color: theme.textLight }]}>Phone Number</Text>
-              <View style={[styles.inputGroup, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-                <Phone size={20} color={theme.textLight} style={styles.inputIcon} />
+              <Text style={[styles.sectionLabel, { color: theme.textSecondary }]}>Phone Number</Text>
+              <View style={[styles.inputGroup, { backgroundColor: theme.bgSurface, borderColor: theme.borderDefault }]}>
+                <Phone size={20} color={theme.textSecondary} style={styles.inputIcon} />
                 <View style={styles.phonePrefixContainer}>
-                  <Text style={[styles.phonePrefix, { color: theme.textLight }]}>+91</Text>
+                  <Text style={[styles.phonePrefix, { color: theme.textSecondary }]}>+91</Text>
                 </View>
                 <TextInput
-                  style={[styles.input, { color: theme.text }]}
+                  style={[styles.input, { color: theme.textPrimary }]}
                   placeholder="9876543210"
-                  placeholderTextColor={theme.textLight + '70'}
+                  placeholderTextColor={theme.textSecondary + '70'}
                   keyboardType="phone-pad"
                   maxLength={10}
                   value={phoneNumber}
                   onChangeText={(val) => setPhoneNumber(val.replace(/\D/g, '').slice(0, 10))}
                 />
               </View>
-              <Text style={[styles.hintText, { color: theme.textLight }]}>Needed for security and pairing.</Text>
+              <Text style={[styles.hintText, { color: theme.textSecondary }]}>Needed for security and pairing.</Text>
             </Animated.View>
 
             {/* Gender Selection */}
             <Animated.View entering={FadeInDown.delay(300)} style={styles.section}>
-              <Text style={[styles.sectionLabel, { color: theme.textLight }]}>Gender (Optional)</Text>
+              <Text style={[styles.sectionLabel, { color: theme.textSecondary }]}>Gender (Optional)</Text>
               <View style={styles.genderGrid}>
                 {genders.map((g) => (
                   <TouchableOpacity
                     key={g}
                     style={[
                       styles.genderBtn,
-                      { borderColor: theme.border, backgroundColor: theme.surface },
-                      gender === g && { backgroundColor: theme.primarySoft, borderColor: theme.primary },
+                      { borderColor: theme.borderDefault, backgroundColor: theme.bgSurface },
+                      gender === g && { backgroundColor: theme.accentRoseSoft, borderColor: theme.accentRose },
                     ]}
                     onPress={() => setGender(g)}
                   >
                     <Text style={[
                       styles.genderText, 
-                      { color: theme.text },
-                      gender === g && { color: theme.primary, fontWeight: '800' }
+                      { color: theme.textPrimary },
+                      gender === g && { color: theme.accentRose, fontWeight: '800' }
                     ]}>{g}</Text>
                   </TouchableOpacity>
                 ))}
@@ -203,13 +219,13 @@ export default function SetupProfileScreen() {
 
             {/* DOB Input */}
             <Animated.View entering={FadeInDown.delay(400)} style={styles.section}>
-              <Text style={[styles.sectionLabel, { color: theme.textLight }]}>Date of Birth (Optional)</Text>
-              <View style={[styles.inputGroup, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-                <Calendar size={20} color={theme.textLight} style={styles.inputIcon} />
+              <Text style={[styles.sectionLabel, { color: theme.textSecondary }]}>Date of Birth (Optional)</Text>
+              <View style={[styles.inputGroup, { backgroundColor: theme.bgSurface, borderColor: theme.borderDefault }]}>
+                <Calendar size={20} color={theme.textSecondary} style={styles.inputIcon} />
                 <TextInput
-                  style={[styles.input, { color: theme.text }]}
+                  style={[styles.input, { color: theme.textPrimary }]}
                   placeholder="DD/MM/YYYY"
-                  placeholderTextColor={theme.textLight + '70'}
+                  placeholderTextColor={theme.textSecondary + '70'}
                   keyboardType="numeric"
                   maxLength={10}
                   value={dob}
@@ -221,25 +237,33 @@ export default function SetupProfileScreen() {
                     }
 
                     // Auto-format DD/MM/YYYY
+                    // Auto-format and validate DD/MM/YYYY
                     const cleaned = text.replace(/\D/g, '');
-                    let formatted = cleaned;
+                    let formatted = '';
                     
+                    if (cleaned.length > 0) {
+                      const day = cleaned.slice(0, 2);
+                      if (parseInt(day) > 31) return; // Block invalid day
+                      formatted = day;
+                    }
                     if (cleaned.length > 2) {
-                      formatted = `${cleaned.slice(0, 2)}/${cleaned.slice(2)}`;
+                      const month = cleaned.slice(2, 4);
+                      if (parseInt(month) > 12) return; // Block invalid month
+                      formatted += '/' + month;
                     }
                     if (cleaned.length > 4) {
-                      formatted = `${cleaned.slice(0, 2)}/${cleaned.slice(2, 4)}/${cleaned.slice(4, 8)}`;
+                      formatted += '/' + cleaned.slice(4, 8);
                     }
                     setDob(formatted);
                   }}
                 />
               </View>
-              <Text style={[styles.hintText, { color: theme.textLight }]}>Used to count down your birthday!</Text>
+              <Text style={[styles.hintText, { color: theme.textSecondary }]}>Used to count down your birthday!</Text>
             </Animated.View>
 
             <Animated.View entering={FadeInDown.delay(500)}>
               <TouchableOpacity
-                style={[styles.continueBtn, { backgroundColor: theme.primary }, loading && styles.disabled]}
+                style={[styles.continueBtn, { backgroundColor: theme.accentRose }, loading && styles.disabled]}
                 onPress={handleSave}
                 disabled={loading}
               >

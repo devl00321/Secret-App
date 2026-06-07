@@ -17,8 +17,10 @@ export interface Activity {
 }
 
 export const activityService = {
-  logActivity: async (type: ActivityType, content: string, metadata?: any) => {
-    const { coupleId, user, currentUserProfile, sharedSecret } = useAuthStore.getState();
+  logActivity: async (type: ActivityType, content: string, metadata?: any, explicitCoupleId?: string) => {
+    const { coupleId: storeCoupleId, user, currentUserProfile, sharedSecret } = useAuthStore.getState();
+    const coupleId = explicitCoupleId || storeCoupleId;
+    
     if (!coupleId || !user) return;
 
     try {

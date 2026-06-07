@@ -58,6 +58,8 @@ interface LocationState {
   } | null;
   partnerLastCompletedPath: { latitude: number; longitude: number }[] | null;
   partnerLastCompletedTime: number | null;
+  partnerLastSafePlaceId: string | null; // Tracks last geofenced safe place for partner to detect leaving/entering
+  userLastSafePlaceId: string | null; // Tracks sender's own last safe place
   activeSos: {
     isActive: boolean;
     triggeredBy: string | null;
@@ -91,6 +93,8 @@ interface LocationState {
   removeSavedPlace: (id: string) => void;
   updateSavedPlace: (id: string, place: Partial<SavedPlace>) => void;
   setPartnerSavedPlaces: (places: SavedPlace[]) => void;
+  setPartnerLastSafePlaceId: (id: string | null) => void;
+  setUserLastSafePlaceId: (id: string | null) => void;
   setPartnerTrip: (trip: { isActive: boolean; destination: any } | null) => void;
   setPartnerWalkSafe: (walkSafe: any) => void;
   setActiveSos: (sos: LocationState['activeSos']) => void;
@@ -131,6 +135,8 @@ export const useLocationStore = create<LocationState>()(
       lastCompletedTime: null,
       partnerLastCompletedPath: null,
       partnerLastCompletedTime: null,
+      partnerLastSafePlaceId: null,
+      userLastSafePlaceId: null,
       incomingPing: null,
       safetyInsight: null,
       navigationSteps: null,
@@ -138,13 +144,20 @@ export const useLocationStore = create<LocationState>()(
       isVoiceEnabled: true,
 
       setUserLocation: (userLocation) => set({ userLocation }),
-      setPartnerLocation: (partnerLocation) => set({ partnerLocation }),
+      setPartnerLocation: (partnerLocation) => {
+        if (partnerLocation && partnerLocation.batteryLevel !== undefined) {
+          partnerLocation.batteryLevel = Math.max(0, partnerLocation.batteryLevel);
+        }
+        set({ partnerLocation });
+      },
       setSharing: (isSharing) => set({ isSharing }),
       setSharingDuration: (sharingDuration) => set({ sharingDuration }),
       setTripActive: (isTripActive, destination) => set({ isTripActive, destination: destination || null }),
       updateMetrics: (distanceToPartner, etaToPartner) => set({ distanceToPartner, etaToPartner }),
       
       setPartnerSavedPlaces: (partnerSavedPlaces) => set({ partnerSavedPlaces }),
+      setPartnerLastSafePlaceId: (partnerLastSafePlaceId) => set({ partnerLastSafePlaceId }),
+      setUserLastSafePlaceId: (userLastSafePlaceId) => set({ userLastSafePlaceId }),
       setPartnerTrip: (partnerTrip) => set({ partnerTrip }),
       setPartnerWalkSafe: (partnerWalkSafe) => set({ partnerWalkSafe }),
       setActiveSos: (activeSos) => set({ activeSos }),
@@ -222,11 +235,10 @@ export const useLocationStore = create<LocationState>()(
 
       addSavedPlace: (place) => {
         const newPlace = { ...place, id: Math.random().toString(36).substring(7) };
-        set((state) => ({
-          savedPlaces: [...state.savedPlaces, newPlace]
-        }));
-        // Import and call sync service
-        import('../services/locationService').then(m => m.locationService.syncSavedPlaces());
+        const newPlaces = [...get().savedPlaces, newPlace];
+        set({ savedPlaces: newPlaces });
+        // Import and call sync service with the fresh data
+        import('../services/locationService').then(m => m.locationService.syncSavedPlaces(newPlaces));
       },
       
       removeSavedPlace: (id) => {
@@ -255,6 +267,8 @@ export const useLocationStore = create<LocationState>()(
         lastCompletedTime: state.lastCompletedTime,
         partnerLastCompletedPath: state.partnerLastCompletedPath,
         partnerLastCompletedTime: state.partnerLastCompletedTime,
+        partnerLastSafePlaceId: state.partnerLastSafePlaceId,
+        userLastSafePlaceId: state.userLastSafePlaceId,
       }),
     }
   )

@@ -1,4 +1,8 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
+import { useFonts } from 'expo-font';
+import { PlayfairDisplay_400Regular, PlayfairDisplay_700Bold } from '@expo-google-fonts/playfair-display';
+import { DMSans_300Light, DMSans_400Regular, DMSans_500Medium } from '@expo-google-fonts/dm-sans';
+import { ThemeProvider as CustomThemeProvider } from '../src/theme';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState, useCallback } from 'react';
@@ -33,22 +37,22 @@ SplashScreen.preventAutoHideAsync().catch(() => {
 
 // Initialize Firebase App Check for production security
 try {
-  const rnfbProvider = appCheck().newReactNativeFirebaseAppCheckProvider();
-  rnfbProvider.configure({
-    android: {
-      provider: __DEV__ ? 'debug' : 'playIntegrity',
-      // Get this token from Firebase Console → App Check → Manage debug tokens
-      debugToken: process.env.EXPO_PUBLIC_APP_CHECK_DEBUG_TOKEN || undefined,
-    },
-    apple: {
-      provider: __DEV__ ? 'debug' : 'appAttestWithDeviceCheckFallback',
-    },
-    web: {
-      provider: 'reCaptchaV3',
-      siteKey: 'unknown'
-    }
-  });
-  initializeAppCheck(undefined, { provider: rnfbProvider, isTokenAutoRefreshEnabled: true });
+  if (!__DEV__) {
+    const rnfbProvider = appCheck().newReactNativeFirebaseAppCheckProvider();
+    rnfbProvider.configure({
+      android: {
+        provider: 'playIntegrity',
+      },
+      apple: {
+        provider: 'appAttestWithDeviceCheckFallback',
+      },
+      web: {
+        provider: 'reCaptchaV3',
+        siteKey: 'unknown'
+      }
+    });
+    initializeAppCheck(undefined, { provider: rnfbProvider, isTokenAutoRefreshEnabled: true });
+  }
 } catch (e) {
   console.warn('App Check initialization failed:', e);
 }
@@ -58,6 +62,14 @@ export default function RootLayout() {
   const segments = useSegments();
   const router = useRouter();
   
+  const [fontsLoaded] = useFonts({
+    PlayfairDisplay_400Regular,
+    PlayfairDisplay_700Bold,
+    DMSans_300Light,
+    DMSans_400Regular,
+    DMSans_500Medium,
+  });
+
   // Local state to track if we've completed the initial auth & data load
   const [isReady, setIsReady] = useState(false);
   const [showSplash, setShowSplash] = useState(true);
@@ -78,6 +90,18 @@ export default function RootLayout() {
   useEffect(() => {
     notificationService.init();
   }, []);
+
+  // Safety Timeout: Prevent splash screen from hanging indefinitely if firebase auth state or document loading gets stuck
+  useEffect(() => {
+    const safetyTimer = setTimeout(() => {
+      if (!isReady) {
+        setIsReady(true);
+        console.warn('[RootLayout] Safety timeout triggered — forcing isReady to true');
+      }
+    }, 5500);
+
+    return () => clearTimeout(safetyTimer);
+  }, [isReady]);
 
   // 1. Auth & Data Listener Setup
   useEffect(() => {
@@ -122,10 +146,23 @@ export default function RootLayout() {
             setCurrentUserProfile(mergedProfile);
             setCoupleId(decryptedData?.coupleId || null);
             
-            // Sync saved places from Firestore to LocationStore
+            // Sync saved places from Firestore to LocationStore (with decryption)
             if (data?.savedPlaces) {
-              import('../src/store/useLocationStore').then(({ useLocationStore }) => {
-                useLocationStore.getState().setSavedPlaces(data.savedPlaces);
+              import('../src/store/useLocationStore').then(async ({ useLocationStore }) => {
+                const coupleId = useAuthStore.getState().coupleId;
+                if (typeof data.savedPlaces === 'string' && coupleId) {
+                  // Decrypt before syncing to location store
+                  const { encryptionService } = await import('../src/services/encryptionService');
+                  const secret = await encryptionService.loadSharedSecret(coupleId);
+                  if (secret) {
+                    const decrypted = await encryptionService.decryptObject<any[]>(data.savedPlaces, secret);
+                    if (decrypted) {
+                      useLocationStore.getState().setSavedPlaces(decrypted);
+                    }
+                  }
+                } else if (Array.isArray(data.savedPlaces)) {
+                  useLocationStore.getState().setSavedPlaces(data.savedPlaces);
+                }
               });
             }
 
@@ -253,7 +290,10 @@ export default function RootLayout() {
         }
       },
       (error) => {
-        console.error('Couple data listener error:', error);
+        // Ignore permission-denied errors as they frequently happen during un-pairing/logout
+        if (!error.message?.includes('permission-denied')) {
+          console.error('Couple data listener error:', error);
+        }
       }
     );
 
@@ -273,8 +313,8 @@ export default function RootLayout() {
 
     if (!user) {
       // If not logged in, allow access to all auth screens (phone, email, otp, index)
-      // Only redirect if we are outside the auth group entirely
-      if (!inAuthGroup) {
+      // Redirect if outside the auth group entirely, or if on authenticated auth screens (setup/pairing)
+      if (!inAuthGroup || onSetupPage || onPairingPage) {
         router.replace('/(auth)');
       }
     } else if (!profileComplete) {
@@ -316,28 +356,30 @@ export default function RootLayout() {
 
   // 4. Hide native splash screen when ready, then let our animated splash take over
   useEffect(() => {
-    if (isReady) {
+    if (isReady && fontsLoaded) {
       // Hide the static native splash immediately
       // Our SplashTransition component takes over with the animation
       SplashScreen.hideAsync().catch(() => {});
     }
-  }, [isReady]);
+  }, [isReady, fontsLoaded]);
 
   // Don't render anything while we are determining the initial route
   // The splash screen covers this phase
-  if (!isReady) return null;
+  if (!isReady || !fontsLoaded) return null;
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="(auth)" options={{ animation: 'fade' }} />
-        <Stack.Screen name="(app)" options={{ animation: 'fade' }} />
-      </Stack>
-      <StatusBar style="auto" />
-      {/* YouTube-style splash: renders on top of everything, animates out once ready */}
-      {showSplash && (
-        <SplashTransition onAnimationComplete={() => setShowSplash(false)} />
-      )}
-    </ThemeProvider>
+    <CustomThemeProvider>
+      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="(auth)" options={{ animation: 'fade' }} />
+          <Stack.Screen name="(app)" options={{ animation: 'fade' }} />
+        </Stack>
+        <StatusBar style="auto" />
+        {/* YouTube-style splash: renders on top of everything, animates out once ready */}
+        {showSplash && (
+          <SplashTransition onAnimationComplete={() => setShowSplash(false)} />
+        )}
+      </ThemeProvider>
+    </CustomThemeProvider>
   );
 }

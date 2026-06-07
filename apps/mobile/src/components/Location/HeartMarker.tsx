@@ -12,37 +12,46 @@ interface HeartMarkerProps {
 
 export const HeartMarker = React.memo(({ type, initial, batteryLevel, color: overrideColor }: HeartMarkerProps) => {
   const theme = useTheme();
-  const defaultColor = type === 'me' ? theme.primary : theme.secondary;
+  const defaultColor = type === 'me' ? theme.accentRose : '#8B7CFF';
   const color = overrideColor || defaultColor;
 
   return (
     <View style={styles.container}>
-      {/* Battery Badge - Positioned outside to not interfere with bubble shadow */}
-      {batteryLevel !== undefined && (
-        <View style={[styles.batteryBadge, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-          <Text style={[styles.batteryText, { color: theme.text }]}>{Math.round(batteryLevel)}%</Text>
-        </View>
-      )}
-      
-      <View style={[styles.bubble, { backgroundColor: color }]}>
-        {initial ? (
-          <Text style={styles.initial}>{initial}</Text>
-        ) : (
-          <Heart size={18} color="white" fill="white" />
+      <View style={styles.markerContent}>
+        {/* Battery Badge - Now relative to the bubble top */}
+        {batteryLevel !== undefined && (
+          <View style={[styles.batteryBadge, { backgroundColor: theme.bgSurface, borderColor: theme.borderDefault }]}>
+            <Text style={[styles.batteryText, { color: theme.textPrimary }]}>{Math.max(0, Math.round(batteryLevel))}%</Text>
+          </View>
         )}
+        
+        <View style={[styles.bubble, { backgroundColor: color }]}>
+          {initial ? (
+            <Text style={styles.initial}>{initial}</Text>
+          ) : (
+            <Heart size={18} color="white" fill="white" />
+          )}
+        </View>
+        <View style={[styles.arrow, { borderTopColor: color }]} />
       </View>
-      <View style={[styles.arrow, { borderTopColor: color }]} />
     </View>
   );
 });
+HeartMarker.displayName = 'HeartMarker';
+
 
 const styles = StyleSheet.create({
   container: {
+    width: 44,
+    height: 54, // Bubble (44) + Arrow (10)
     alignItems: 'center',
-    justifyContent: 'flex-end',
-    width: 90, 
-    height: 90,
-    paddingBottom: 10,
+    justifyContent: 'flex-start',
+  },
+  markerContent: {
+    width: 44,
+    height: 54,
+    alignItems: 'center',
+    justifyContent: 'flex-start',
   },
   bubble: {
     width: 44,
@@ -86,8 +95,8 @@ const styles = StyleSheet.create({
   },
   batteryBadge: {
     position: 'absolute',
-    top: 0,
-    right: 0,
+    top: -15, // Sit above the bubble
+    right: -10,
     zIndex: 10,
     paddingHorizontal: 5,
     paddingVertical: 1,

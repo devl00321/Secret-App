@@ -23,12 +23,14 @@ import firestore, {
 } from '@react-native-firebase/firestore';
 import storage, { getStorage } from '@react-native-firebase/storage';
 
+import { Platform } from 'react-native';
+
 // ── Modular singleton instances ──────────────────────────────────────────────
 // Use getFirestore(), getAuth(), getStorage() to avoid the namespaced
 // `firebase.app()` call which triggers the "getApp()" deprecation warning.
-const db = getFirestore();
-const authInstance = getAuth();
-const storageInstance = getStorage();
+const db = Platform.OS === 'web' ? ({} as any) : getFirestore();
+const authInstance = Platform.OS === 'web' ? ({} as any) : getAuth();
+const storageInstance = Platform.OS === 'web' ? ({} as any) : getStorage();
 
 // Re-export Firestore modular helpers
 export {

@@ -39,8 +39,8 @@ export const Header = ({
       style={[
         styles.container, 
         { 
-          backgroundColor: transparent ? 'transparent' : (Platform.OS === 'ios' ? 'transparent' : theme.surface),
-          borderBottomColor: transparent ? 'transparent' : theme.border,
+          backgroundColor: transparent ? 'transparent' : (Platform.OS === 'ios' ? 'transparent' : theme.bgSurface),
+          borderBottomColor: transparent ? 'transparent' : theme.borderDefault,
           borderBottomWidth: transparent ? 0 : 1,
         }
       ]}
@@ -60,7 +60,7 @@ export const Header = ({
             />
           )}
           <Text 
-            style={[styles.title, { color: textColor ?? theme.text }]}
+            style={[styles.title, { color: textColor ?? theme.textPrimary }]}
             numberOfLines={1}
           >
             {title}
@@ -75,7 +75,7 @@ export const Header = ({
             onPress={() => router.back()}
             hitSlop={{ top: 35, bottom: 35, left: 50, right: 40 }}
           >
-            <ArrowLeft size={24} color={textColor ?? theme.text} />
+            <ArrowLeft size={24} color={textColor ?? theme.textPrimary} />
           </TouchableOpacity>
         )}
       </View>

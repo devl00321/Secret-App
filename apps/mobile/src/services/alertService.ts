@@ -18,6 +18,8 @@ export type AlertPriority = 'critical' | 'warning' | 'info';
 
 let sirenSound: Audio.Sound | null = null;
 let sirenInterval: ReturnType<typeof setInterval> | null = null;
+let remoteRingSound: Audio.Sound | null = null;
+let ringInterval: ReturnType<typeof setInterval> | null = null;
 
 // Local state to ensure absolute silence for the victim even if Firestore sync is slow
 let victimSilenceOverride = false;
@@ -177,6 +179,65 @@ export const alertService = {
     console.log('[AlertService] Siren stopped');
   },
 
+  // ─── REMOTE RING: Loud alarm to find phone ───────────────────────
+
+  triggerRemoteRing: async () => {
+    if (Platform.OS === 'web') return;
+    
+    try {
+      // Configure audio for premium experience
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        playsInSilentModeIOS: true, 
+        staysActiveInBackground: true,
+        shouldDuckAndroid: false,
+      });
+
+      // Stop any existing ring
+      if (remoteRingSound) {
+        await alertService.stopRemoteRing();
+      }
+
+      // Smooth haptic pattern (Tingg-Tingg rhythm)
+      ringInterval = setInterval(() => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        setTimeout(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light), 200);
+      }, 2000);
+
+      // Premium chime sound
+      const { sound } = await Audio.Sound.createAsync(
+        { uri: 'https://www.soundjay.com/buttons/sounds/button-30.mp3' },
+        { isLooping: true, volume: 1.0, shouldPlay: true }
+      );
+      remoteRingSound = sound;
+      console.log('[AlertService] Remote Ring started (Premium)');
+
+      // Auto-stop after 28 seconds as requested
+      setTimeout(() => {
+        alertService.stopRemoteRing();
+      }, 28000);
+      
+    } catch (err) {
+      console.error('[AlertService] Remote Ring failed:', err);
+    }
+  },
+
+  stopRemoteRing: async () => {
+    if (ringInterval) {
+      clearInterval(ringInterval);
+      ringInterval = null;
+    }
+    if (remoteRingSound) {
+      try {
+        await remoteRingSound.stopAsync();
+        await remoteRingSound.unloadAsync();
+      } catch (e) {}
+      remoteRingSound = null;
+    }
+    Vibration.cancel();
+    console.log('[AlertService] Remote Ring stopped');
+  },
+
   // ─── WARNING: Alert tone + medium haptics ──────────────────────────
 
   _triggerWarning: async (_title: string, _body: string) => {
@@ -239,12 +300,12 @@ export const alertService = {
     // Realistic heartbeat: LUB (Heavy) → pause → DUB (Medium) → rest
     const pulse = async () => {
       try {
-        // LUB - strong first beat
-        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+        // LUB - strongest possible haptic on iOS
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
         
         setTimeout(async () => {
           // DUB - slightly softer second beat
-          await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
         }, 180); // 180ms gap between lub-dub
 
         // Android: physical vibration to back it up
@@ -252,7 +313,8 @@ export const alertService = {
           Vibration.vibrate([0, 50, 180, 30]);
         }
       } catch (e) {
-        // Silently ignore haptic errors
+        // Fallback if expo-haptics fails
+        Vibration.vibrate();
       }
     };
 

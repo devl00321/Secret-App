@@ -1,38 +1,52 @@
 export interface SafetyContext {
   batteryLevel?: number;
   partnerName: string;
+  isSos?: boolean;
+  isSilent?: boolean;
 }
 
 export const safetyService = {
   /**
-   * Generates a calming, humanized safety insight based on time and battery.
+   * Generates a high-priority emergency insight for SOS situations.
    */
   getEmergencyInsight(context: SafetyContext) {
+    const { partnerName, batteryLevel, isSos, isSilent } = context;
     const hour = new Date().getHours();
-    // User requested: hour >= 21 || hour < 20 (assuming they meant morning, like 6 AM, so hour < 6)
     const isLateNight = hour >= 21 || hour < 6;
-    const isLowBattery = context.batteryLevel !== undefined && context.batteryLevel <= 40;
+    const displayBattery = batteryLevel !== undefined ? Math.max(0, Math.round(batteryLevel)) : null;
+    const isLowBattery = displayBattery !== null && displayBattery <= 25;
 
     let message = '';
     let suggestion = '';
-    let status: 'safe' | 'warning' | 'alert' = 'warning';
+    let status: 'safe' | 'warning' | 'alert' = 'alert';
 
-    if (isLateNight && isLowBattery) {
+    if (isSos) {
       status = 'alert';
-      message = `It's getting late and ${context.partnerName}'s phone battery is running a bit low (${context.batteryLevel}%). They might just be on their way back.`;
-      suggestion = `Give them a quick call to check in, ensure they're okay, and take care of them.`;
+      const sosType = isSilent ? 'SILENT SOS' : 'SOS EMERGENCY';
+      message = `🚨 ${partnerName} has triggered a ${sosType}! They need immediate attention.`;
+      
+      if (isLowBattery) {
+        message += ` Their battery is critically low (${displayBattery}%).`;
+        suggestion = `1. Attempt to call immediately.\n2. If no response, check their last known location on the map.\n3. Contact emergency services if you cannot reach them.`;
+      } else {
+        suggestion = `Try calling ${partnerName} right away. They may be in danger or need urgent help. Stay calm and head to their location if safe.`;
+      }
+    } else if (isLateNight && isLowBattery) {
+      status = 'alert';
+      message = `It's late and ${partnerName}'s battery is critical (${displayBattery}%). They haven't reached home yet.`;
+      suggestion = `Check in with them now to ensure they have a safe way back before their phone dies.`;
     } else if (isLateNight) {
       status = 'warning';
-      message = `It's night time and ${context.partnerName} is still outside or not at home yet.`;
-      suggestion = `Call them once just to check in and see if they need anything. Take care of them!`;
+      message = `${partnerName} is still out late at night.`;
+      suggestion = `A quick message or call to check their status is recommended for peace of mind.`;
     } else if (isLowBattery) {
       status = 'warning';
-      message = `${context.partnerName}'s phone battery is getting low (${context.batteryLevel}%).`;
-      suggestion = `You might want to reach out before their phone dies, just to check on them.`;
+      message = `${partnerName}'s phone is at ${displayBattery}% battery.`;
+      suggestion = `Remind them to charge up soon so you can stay connected.`;
     } else {
       status = 'warning';
-      message = `${context.partnerName} has triggered an alert.`;
-      suggestion = `Give them a quick call to see what's up and let them know you're there for them.`;
+      message = `${partnerName} needs your attention.`;
+      suggestion = `Reach out to see how they're doing.`;
     }
 
     return { message, status, suggestion };

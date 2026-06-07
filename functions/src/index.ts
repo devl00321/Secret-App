@@ -130,11 +130,13 @@ export const onuserupdated = onDocumentUpdated("users/{userId}", async (event: F
 
   // 1. Trip Started
   if (!beforeWalkSafe?.isActive && afterWalkSafe?.isActive) {
+    // VUL-10 FIX: destinationName is always null (stored as E2EE destinationNameEnc).
+    // Cloud Functions don't have the private key — use a generic label intentionally.
     messages.push({
       token: targetFcm,
       notification: {
         title: "Walk Safe Started 🚶‍♂️",
-        body: `Your ${partnerName} started their trip to ${afterWalkSafe.destinationName || 'their destination'} ❤️🌸`,
+        body: `Your ${partnerName} started a Walk Safe trip ❤️🌸`,
       },
     });
   }
@@ -145,7 +147,7 @@ export const onuserupdated = onDocumentUpdated("users/{userId}", async (event: F
       token: targetFcm,
       notification: {
         title: "Arrived Safely ✅",
-        body: `Your ${partnerName} has reached ${afterWalkSafe.destinationName || 'their destination'} safely ❤️🌸`,
+        body: `Your ${partnerName} has arrived at their destination safely ❤️🌸`,
       },
     });
   }
@@ -157,7 +159,7 @@ export const onuserupdated = onDocumentUpdated("users/{userId}", async (event: F
         token: targetFcm,
         notification: {
           title: "⚠️ Trip Overdue",
-          body: `Your ${partnerName} hasn't reached ${afterWalkSafe.destinationName} yet. Please check in on them!`,
+          body: `Your ${partnerName} hasn't reached their destination yet. Please check in on them!`,
         },
         android: { priority: "high" }
       });
@@ -192,5 +194,34 @@ export const onuserupdated = onDocumentUpdated("users/{userId}", async (event: F
     });
   }
 
+  // ------------------------------------------------------------------------
+  // D. GEOFENCE EVENTS (Data-Only Push for E2EE)
+  // ------------------------------------------------------------------------
+  const beforeGeofence = beforeData.geofenceEvent;
+  const afterGeofence = afterData.geofenceEvent;
+
+  if (afterGeofence && afterGeofence.timestamp !== beforeGeofence?.timestamp) {
+    // We send a data-only message so the partner's device can wake up,
+    // decrypt the placeNameEnc, and trigger a local notification.
+    messages.push({
+      token: targetFcm,
+      data: {
+        type: 'geofence',
+        event: afterGeofence.type,
+        placeNameEnc: afterGeofence.placeNameEnc,
+        partnerName: partnerName,
+      },
+      android: { priority: "high" },
+      apns: {
+        payload: {
+          aps: {
+            "content-available": 1
+          }
+        }
+      }
+    });
+  }
+
   return sendMessages(messages);
 });
+export * from "./aiService";

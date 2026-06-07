@@ -33,70 +33,70 @@ export const LocationSettingsModal = ({ visible, onClose, onOpenSavedPlaces }: L
           <TouchableWithoutFeedback onPress={onClose}>
             <View style={StyleSheet.absoluteFillObject} />
           </TouchableWithoutFeedback>
-          <View style={[styles.content, { backgroundColor: theme.surface }]}>
+          <View style={[styles.content, { backgroundColor: theme.bgSurface }]}>
             <View style={styles.header}>
-              <Text style={[styles.title, { color: theme.text }]}>Privacy Settings 🔒</Text>
+              <Text style={[styles.title, { color: theme.textPrimary }]}>Privacy Settings 🔒</Text>
               <TouchableOpacity 
                 onPress={onClose}
                 hitSlop={{ top: 25, bottom: 25, left: 25, right: 25 }}
               >
-                <X size={24} color={theme.textLight} />
+                <X size={24} color={theme.textSecondary} />
               </TouchableOpacity>
             </View>
 
             <View style={styles.section}>
               <View style={styles.row}>
                 <View>
-                  <Text style={[styles.label, { color: theme.text }]}>Share Live Location</Text>
-                  <Text style={[styles.subLabel, { color: theme.textLight }]}>Partner can see where you are</Text>
+                  <Text style={[styles.label, { color: theme.textPrimary }]}>Share Live Location</Text>
+                  <Text style={[styles.subLabel, { color: theme.textSecondary }]}>Partner can see where you are</Text>
                 </View>
                 <Switch 
                   value={isSharing} 
                   onValueChange={setSharing}
-                  trackColor={{ false: theme.border, true: theme.primary }}
+                  trackColor={{ false: theme.borderDefault, true: theme.accentRose }}
                 />
               </View>
             </View>
 
             <View style={styles.section}>
-              <Text style={[styles.sectionTitle, { color: theme.textLight }]}>GEOFENCING</Text>
+              <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>GEOFENCING</Text>
               <TouchableOpacity 
                 style={[styles.placesButton, { backgroundColor: theme.isDark ? '#222' : '#F8F8F8' }]}
                 onPress={onOpenSavedPlaces}
               >
                 <View style={styles.placesButtonLeft}>
-                  <View style={[styles.iconCircle, { backgroundColor: theme.primary + '15' }]}>
-                    <MapPin size={20} color={theme.primary} />
+                  <View style={[styles.iconCircle, { backgroundColor: theme.accentRose + '15' }]}>
+                    <MapPin size={20} color={theme.accentRose} />
                   </View>
                   <View style={{ marginLeft: 15 }}>
-                    <Text style={[styles.label, { color: theme.text }]}>Saved Places</Text>
-                    <Text style={[styles.subLabel, { color: theme.textLight }]}>
-                      {savedPlaces.length} zones configured
+                    <Text style={[styles.label, { color: theme.textPrimary }]}>Saved Places</Text>
+                    <Text style={[styles.subLabel, { color: theme.textSecondary }]}>
+                      {Array.isArray(savedPlaces) ? savedPlaces.length : 0} zones configured
                     </Text>
                   </View>
                 </View>
-                <ChevronRight size={20} color={theme.textLight} />
+                <ChevronRight size={20} color={theme.textSecondary} />
               </TouchableOpacity>
             </View>
 
             {isSharing && (
               <View style={styles.section}>
-                <Text style={[styles.sectionTitle, { color: theme.textLight }]}>SHARING DURATION</Text>
+                <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>SHARING DURATION</Text>
                 {durations.map((d) => (
                   <TouchableOpacity 
                     key={d.value}
                     style={[
                       styles.durationItem, 
                       { backgroundColor: theme.isDark ? '#222' : '#F8F8F8' },
-                      sharingDuration === d.value && { borderColor: theme.primary, borderWidth: 2 }
+                      sharingDuration === d.value && { borderColor: theme.accentRose, borderWidth: 2 }
                     ]}
                     onPress={() => setSharingDuration(d.value as any)}
                   >
-                    <Clock size={20} color={sharingDuration === d.value ? theme.primary : theme.textLight} />
+                    <Clock size={20} color={sharingDuration === d.value ? theme.accentRose : theme.textSecondary} />
                     <Text style={[
                       styles.durationText, 
-                      { color: theme.text },
-                      sharingDuration === d.value && { color: theme.primary, fontWeight: 'bold' }
+                      { color: theme.textPrimary },
+                      sharingDuration === d.value && { color: theme.accentRose, fontWeight: 'bold' }
                     ]}>
                       {d.label}
                     </Text>
@@ -105,9 +105,9 @@ export const LocationSettingsModal = ({ visible, onClose, onOpenSavedPlaces }: L
               </View>
             )}
 
-            <View style={[styles.infoBox, { backgroundColor: theme.primary + '10' }]}>
-              <Shield size={20} color={theme.primary} />
-              <Text style={[styles.infoText, { color: theme.text }]}>
+            <View style={[styles.infoBox, { backgroundColor: theme.accentRose + '10' }]}>
+              <Shield size={20} color={theme.accentRose} />
+              <Text style={[styles.infoText, { color: theme.textPrimary }]}>
                 Your location is only shared with your partner. Encrypted and secure.
               </Text>
             </View>

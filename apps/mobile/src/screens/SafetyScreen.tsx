@@ -88,27 +88,27 @@ export const SafetyScreen = () => {
   // --- Immersive Interpolations ---
   const backgroundColor = progressAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [theme.background, '#2d0606'],
+    outputRange: [theme.bgPrimary, '#2d0606'],
   });
 
   const textColor = progressAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [theme.text, '#FFFFFF'],
+    outputRange: [theme.textPrimary, '#FFFFFF'],
   });
 
   const textLightColor = progressAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [theme.textLight, 'rgba(255,255,255,0.6)'],
+    outputRange: [theme.textSecondary, 'rgba(255,255,255,0.6)'],
   });
 
   const cardBgColor = progressAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [theme.surface, 'rgba(255,255,255,0.08)'],
+    outputRange: [theme.bgSurface, 'rgba(255,255,255,0.08)'],
   });
 
   const cardBorderColor = progressAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [theme.border, 'rgba(255,255,255,0.15)'],
+    outputRange: [theme.borderDefault, 'rgba(255,255,255,0.15)'],
   });
 
   return (
@@ -186,7 +186,7 @@ export const SafetyScreen = () => {
                     locationService.syncTripStatus();
                   }
                 }} 
-                trackColor={{ false: '#3f3f46', true: theme.primary }}
+                trackColor={{ false: '#3f3f46', true: theme.accentRose }}
               />
             </View>
           </Animated.View>
@@ -195,10 +195,10 @@ export const SafetyScreen = () => {
           <View style={styles.sectionHeader}>
             <Animated.Text style={[styles.sectionTitle, { color: textColor }]}>Guardian Network</Animated.Text>
             <TouchableOpacity 
-              onPress={() => router.push('/(app)/emergency-contacts')}
+              onPress={() => router.push('/emergency-contacts')}
               hitSlop={{ top: 15, bottom: 15, left: 20, right: 20 }}
             >
-              <Animated.Text style={[styles.editLink, { color: theme.primary }]}>Add / Manage</Animated.Text>
+              <Animated.Text style={[styles.editLink, { color: theme.accentRose }]}>Add / Manage</Animated.Text>
             </TouchableOpacity>
           </View>
           
@@ -207,10 +207,10 @@ export const SafetyScreen = () => {
               <View>
                 <TouchableOpacity 
                   style={styles.contactRow}
-                  onPress={() => router.push('/(app)/emergency-contacts')}
+                  onPress={() => router.push('/emergency-contacts')}
                 >
-                  <View style={[styles.contactIcon, { backgroundColor: theme.primary + '15' }]}>
-                    <Users size={20} color={theme.primary} />
+                  <View style={[styles.contactIcon, { backgroundColor: theme.accentRose + '15' }]}>
+                    <Users size={20} color={theme.accentRose} />
                   </View>
                   <View style={styles.contactInfo}>
                     <Animated.Text style={[styles.contactName, { color: textColor }]}>
@@ -220,16 +220,16 @@ export const SafetyScreen = () => {
                       Primary • {currentUserProfile.emergencyContacts.length} of 10 guardians
                     </Animated.Text>
                   </View>
-                  <ChevronRight size={20} color={theme.textLight} />
+                  <ChevronRight size={20} color={theme.textSecondary} />
                 </TouchableOpacity>
                 
                 {currentUserProfile.emergencyContacts.length < 10 && (
                   <TouchableOpacity 
-                    style={[styles.miniAddBtn, { marginTop: 15, borderColor: theme.primary + '30' }]}
-                    onPress={() => router.push('/(app)/emergency-contacts')}
+                    style={[styles.miniAddBtn, { marginTop: 15, borderColor: theme.accentRose + '30' }]}
+                    onPress={() => router.push('/emergency-contacts')}
                   >
-                    <Plus size={16} color={theme.primary} />
-                    <Text style={[styles.miniAddText, { color: theme.primary }]}>Add Another Guardian</Text>
+                    <Plus size={16} color={theme.accentRose} />
+                    <Text style={[styles.miniAddText, { color: theme.accentRose }]}>Add Another Guardian</Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -237,10 +237,10 @@ export const SafetyScreen = () => {
                <View>
                 <TouchableOpacity 
                   style={styles.contactRow}
-                  onPress={() => router.push('/(app)/emergency-contacts')}
+                  onPress={() => router.push('/emergency-contacts')}
                 >
-                  <View style={[styles.contactIcon, { backgroundColor: theme.primary + '15' }]}>
-                    <User size={20} color={theme.primary} />
+                  <View style={[styles.contactIcon, { backgroundColor: theme.accentRose + '15' }]}>
+                    <User size={20} color={theme.accentRose} />
                   </View>
                   <View style={styles.contactInfo}>
                     <Animated.Text style={[styles.contactName, { color: textColor }]}>
@@ -250,38 +250,38 @@ export const SafetyScreen = () => {
                       Primary • 1 of 10 guardians
                     </Animated.Text>
                   </View>
-                  <ChevronRight size={20} color={theme.textLight} />
+                  <ChevronRight size={20} color={theme.textSecondary} />
                 </TouchableOpacity>
 
                 <TouchableOpacity 
-                  style={[styles.miniAddBtn, { marginTop: 15, borderColor: theme.primary + '30' }]}
-                  onPress={() => router.push('/(app)/emergency-contacts')}
+                  style={[styles.miniAddBtn, { marginTop: 15, borderColor: theme.accentRose + '30' }]}
+                  onPress={() => router.push('/emergency-contacts')}
                 >
-                  <Plus size={16} color={theme.primary} />
-                  <Text style={[styles.miniAddText, { color: theme.primary }]}>Add Backup Guardians</Text>
+                  <Plus size={16} color={theme.accentRose} />
+                  <Text style={[styles.miniAddText, { color: theme.accentRose }]}>Add Backup Guardians</Text>
                 </TouchableOpacity>
               </View>
             ) : (
               <TouchableOpacity style={styles.addContactRow} onPress={() => setShowContactModal(true)}>
-                <View style={[styles.contactIcon, { backgroundColor: theme.background }]}>
-                  <PhoneIcon size={20} color={theme.textLight} />
+                <View style={[styles.contactIcon, { backgroundColor: theme.bgPrimary }]}>
+                  <PhoneIcon size={20} color={theme.textSecondary} />
                 </View>
                 <View style={styles.contactInfo}>
-                  <Animated.Text style={[styles.contactName, { color: theme.textLight }]}>
+                  <Animated.Text style={[styles.contactName, { color: theme.textSecondary }]}>
                     No contact added
                   </Animated.Text>
-                  <Animated.Text style={[styles.contactRole, { color: theme.textLight }]}>
+                  <Animated.Text style={[styles.contactRole, { color: theme.textSecondary }]}>
                     Tap to setup your guardian network
                   </Animated.Text>
                 </View>
-                <ChevronRight size={20} color={theme.textLight} />
+                <ChevronRight size={20} color={theme.textSecondary} />
               </TouchableOpacity>
             )}
           </Animated.View>
 
           <View style={styles.statusRow}>
             <View style={styles.statusItem}>
-              <Radio size={20} color={activeSos?.isActive ? '#FF3B30' : (walkSafe?.isActive ? theme.primary : theme.textLight)} />
+              <Radio size={20} color={activeSos?.isActive ? '#FF3B30' : (walkSafe?.isActive ? theme.accentRose : theme.textSecondary)} />
               <Animated.Text style={[styles.statusLabel, { color: textLightColor }]}>
                 {activeSos?.isActive ? "SOS BROADCASTING" : (walkSafe?.isActive ? "Tracking Active" : "Standby")}
               </Animated.Text>
@@ -298,7 +298,7 @@ export const SafetyScreen = () => {
             <Animated.Text style={[styles.sectionTitle, { color: textColor, marginBottom: 20 }]}>Quick Actions</Animated.Text>
             
             <TouchableOpacity 
-              style={[styles.actionItem, { backgroundColor: activeSos?.isActive ? 'rgba(255,255,255,0.08)' : theme.surface }]}
+              style={[styles.actionItem, { backgroundColor: activeSos?.isActive ? 'rgba(255,255,255,0.08)' : theme.bgSurface }]}
               onPress={() => {
                 const partner = useAuthStore.getState().partner;
                 if (partner?.phoneNumber) {
@@ -308,12 +308,12 @@ export const SafetyScreen = () => {
                 }
               }}
             >
-              <Phone size={22} color={activeSos?.isActive ? 'white' : theme.text} />
+              <Phone size={22} color={activeSos?.isActive ? 'white' : theme.textPrimary} />
               <Animated.Text style={[styles.actionText, { color: textColor }]}>Call Partner</Animated.Text>
             </TouchableOpacity>
 
             <TouchableOpacity 
-              style={[styles.actionItem, { backgroundColor: activeSos?.isActive ? 'rgba(255,255,255,0.08)' : theme.surface }]}
+              style={[styles.actionItem, { backgroundColor: activeSos?.isActive ? 'rgba(255,255,255,0.08)' : theme.bgSurface }]}
               onPress={() => {
                 if (activeSos?.isActive) {
                   handleCancelSOS();
@@ -322,8 +322,8 @@ export const SafetyScreen = () => {
                 }
               }}
             >
-              <AlertTriangle size={22} color={activeSos?.isActive ? '#FF3B30' : theme.primary} />
-              <Animated.Text style={[styles.actionText, { color: activeSos?.isActive ? '#FF3B30' : theme.primary }]}>
+              <AlertTriangle size={22} color={activeSos?.isActive ? '#FF3B30' : theme.accentRose} />
+              <Animated.Text style={[styles.actionText, { color: activeSos?.isActive ? '#FF3B30' : theme.accentRose }]}>
                 {activeSos?.isActive ? "Stop SOS Alert" : "Test Emergency Signal"}
               </Animated.Text>
             </TouchableOpacity>

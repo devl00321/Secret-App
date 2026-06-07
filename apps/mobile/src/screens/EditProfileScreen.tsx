@@ -12,11 +12,12 @@ import { Image } from 'expo-image';
 import { Camera, ShieldCheck, Info, User, Trash2 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import Animated, { FadeInUp, FadeInDown } from 'react-native-reanimated';
+import { encryptionService } from '../services/encryptionService';
 
 export const EditProfileScreen = () => {
   const theme = useTheme();
   const router = useRouter();
-  const { user, currentUserProfile, setCurrentUserProfile } = useAuthStore();
+  const { user, currentUserProfile, setCurrentUserProfile, sharedSecret } = useAuthStore();
   
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -25,24 +26,39 @@ export const EditProfileScreen = () => {
   const [editDob, setEditDob] = useState(currentUserProfile?.dob || '');
   const [localPhotoUri, setLocalPhotoUri] = useState<string | null>(null);
 
-  // Sync local state when the store's profile is updated (e.g., after decryption secret loads)
+  // Sync local state when the store's profile is updated
   useEffect(() => {
-    if (currentUserProfile) {
-      // Only sync if local state is empty or looks like an encrypted string
-      // Encrypted strings in this app typically start with Base64-like characters and are long
-      const isEncrypted = (str: string) => str.length > 30 && /^[a-zA-Z0-9+/=]+$/.test(str);
+    const syncAndDecrypt = async () => {
+      if (!currentUserProfile) return;
 
+      const secret = useAuthStore.getState().sharedSecret;
+
+      // 1. Sync Display Name
       if (currentUserProfile.displayName && (!editName || editName === 'Unknown X_X')) {
         setEditName(currentUserProfile.displayName);
       }
+
+      // 2. Sync Gender
       if (currentUserProfile.gender && !editGender) {
         setEditGender(currentUserProfile.gender);
       }
-      if (currentUserProfile.dob && (!editDob || isEncrypted(editDob))) {
+
+      // 3. Sync & Decrypt DOB
+      if (currentUserProfile.dob && secret) {
+        try {
+          const decrypted = await encryptionService.decryptField(currentUserProfile.dob, secret, currentUserProfile.coupleId);
+          setEditDob(decrypted);
+        } catch (e) {
+          console.warn('[EditProfile] DOB decryption failed');
+          setEditDob(currentUserProfile.dob);
+        }
+      } else if (currentUserProfile.dob && !secret) {
         setEditDob(currentUserProfile.dob);
       }
-    }
-  }, [currentUserProfile]);
+    };
+
+    syncAndDecrypt();
+  }, [currentUserProfile, sharedSecret]);
 
   const handlePickImage = async () => {
     const uri = await imageService.pickAndCompressImage();
@@ -93,6 +109,39 @@ export const EditProfileScreen = () => {
         setUploading(false);
       }
 
+      // DOB Validation
+      if (editDob.trim()) {
+        const dobRegex = /^\d{2}\/\d{2}\/\d{4}$/;
+        if (!dobRegex.test(editDob.trim())) {
+          Alert.alert("Invalid DOB", "Please use DD/MM/YYYY format.");
+          setLoading(false);
+          return;
+        }
+
+        const [d, m, y] = editDob.split('/').map(Number);
+        const today = new Date();
+        const birthDate = new Date(y, m - 1, d);
+        
+        if (d > 31 || m > 12 || y < 1920 || y > today.getFullYear()) {
+          Alert.alert('Invalid Date', 'Please enter a valid date of birth.');
+          setLoading(false);
+          return;
+        }
+
+        // Age verification (16+)
+        let age = today.getFullYear() - y;
+        const monthDiff = today.getMonth() - (m - 1);
+        if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < d)) {
+          age--;
+        }
+
+        if (age < 16) {
+          Alert.alert("Error", "Sorry, but you're not eligible to use this app.");
+          setLoading(false);
+          return;
+        }
+      }
+
       // 2. Update profile
       const updates = {
         displayName: editName.trim(),
@@ -123,13 +172,13 @@ export const EditProfileScreen = () => {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.bgPrimary }]}>
       <Header title="Edit Profile" showBack />
       
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <Animated.View entering={FadeInUp.duration(600)} style={styles.photoSection}>
           <TouchableOpacity 
-            style={[styles.photoContainer, { borderColor: theme.border, backgroundColor: theme.surface }]}
+            style={[styles.photoContainer, { borderColor: theme.borderDefault, backgroundColor: theme.bgSurface }]}
             onPress={handlePickImage}
             disabled={uploading}
           >
@@ -146,14 +195,14 @@ export const EditProfileScreen = () => {
                 contentFit="cover"
               />
             ) : (
-              <View style={[styles.placeholderPhoto, { backgroundColor: theme.primarySoft }]}>
-                <Text style={[styles.placeholderText, { color: theme.primary }]}>
+              <View style={[styles.placeholderPhoto, { backgroundColor: theme.accentRoseSoft }]}>
+                <Text style={[styles.placeholderText, { color: theme.accentRose }]}>
                   {(currentUserProfile?.displayName || user?.displayName || 'U').charAt(0).toUpperCase()}
                 </Text>
               </View>
             )}
             
-            <View style={[styles.editIconBadge, { backgroundColor: theme.primary }]}>
+            <View style={[styles.editIconBadge, { backgroundColor: theme.accentRose }]}>
               {uploading ? (
                 <ActivityIndicator size="small" color="white" />
               ) : (
@@ -164,57 +213,57 @@ export const EditProfileScreen = () => {
           
           {(localPhotoUri && localPhotoUri !== 'REMOVE') || (currentUserProfile?.photoURL && localPhotoUri !== 'REMOVE') ? (
             <TouchableOpacity 
-              style={[styles.deleteBtn, { backgroundColor: theme.surface, borderColor: theme.border }]}
+              style={[styles.deleteBtn, { backgroundColor: theme.bgSurface, borderColor: theme.borderDefault }]}
               onPress={handleDeletePhoto}
             >
-              <Trash2 size={14} color={theme.error} />
-              <Text style={[styles.deleteBtnText, { color: theme.error }]}>Remove Photo</Text>
+              <Trash2 size={14} color={theme.dangerRed} />
+              <Text style={[styles.deleteBtnText, { color: theme.dangerRed }]}>Remove Photo</Text>
             </TouchableOpacity>
           ) : (
-            <Text style={[styles.photoHint, { color: theme.textLight }]}>
+            <Text style={[styles.photoHint, { color: theme.textSecondary }]}>
               Tap to change profile picture
             </Text>
           )}
         </Animated.View>
 
         <Animated.View entering={FadeInDown.delay(200).duration(600)} style={styles.privacyCard}>
-          <View style={[styles.privacyBadge, { backgroundColor: theme.success + '20' }]}>
-            <ShieldCheck size={16} color={theme.success} />
-            <Text style={[styles.privacyText, { color: theme.success }]}>End-to-End Private</Text>
+          <View style={[styles.privacyBadge, { backgroundColor: theme.safeGreen + '20' }]}>
+            <ShieldCheck size={16} color={theme.safeGreen} />
+            <Text style={[styles.privacyText, { color: theme.safeGreen }]}>End-to-End Private</Text>
           </View>
-          <Text style={[styles.privacyDetail, { color: theme.textLight }]}>
+          <Text style={[styles.privacyDetail, { color: theme.textSecondary }]}>
             Your profile photo and details are only shared with your partner. No one else can see this information.
           </Text>
         </Animated.View>
 
         <View style={styles.form}>
-          <View style={[styles.inputWrapper, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-            <Text style={[styles.inputLabel, { color: theme.textLight }]}>Display Name</Text>
+          <View style={[styles.inputWrapper, { backgroundColor: theme.bgSurface, borderColor: theme.borderDefault }]}>
+            <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Display Name</Text>
             <TextInput
-              style={[styles.input, { color: theme.text }]}
+              style={[styles.input, { color: theme.textPrimary }]}
               value={editName}
               onChangeText={setEditName}
               placeholder="Your name"
-              placeholderTextColor={theme.textLight}
+              placeholderTextColor={theme.textSecondary}
             />
           </View>
 
-          <View style={[styles.inputWrapper, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-            <Text style={[styles.inputLabel, { color: theme.textLight }]}>Gender</Text>
+          <View style={[styles.inputWrapper, { backgroundColor: theme.bgSurface, borderColor: theme.borderDefault }]}>
+            <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Gender</Text>
             <View style={styles.genderRow}>
               {(['Male', 'Female', 'Non-binary'] as const).map((g) => (
                 <TouchableOpacity
                   key={g}
                   style={[
                     styles.genderBtn,
-                    { borderColor: theme.border },
-                    editGender === g && { backgroundColor: theme.primary, borderColor: theme.primary }
+                    { borderColor: theme.borderDefault },
+                    editGender === g && { backgroundColor: theme.accentRose, borderColor: theme.accentRose }
                   ]}
                   onPress={() => setEditGender(g)}
                 >
                   <Text style={[
                     styles.genderBtnText,
-                    { color: editGender === g ? 'white' : theme.textLight }
+                    { color: editGender === g ? 'white' : theme.textSecondary }
                   ]}>
                     {g}
                   </Text>
@@ -223,10 +272,10 @@ export const EditProfileScreen = () => {
             </View>
           </View>
 
-          <View style={[styles.inputWrapper, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-            <Text style={[styles.inputLabel, { color: theme.textLight }]}>Date of Birth</Text>
+          <View style={[styles.inputWrapper, { backgroundColor: theme.bgSurface, borderColor: theme.borderDefault }]}>
+            <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Date of Birth</Text>
             <TextInput
-              style={[styles.input, { color: theme.text }]}
+              style={[styles.input, { color: theme.textPrimary }]}
               value={editDob}
               onChangeText={(text) => {
                 // Handle deletion
@@ -235,20 +284,27 @@ export const EditProfileScreen = () => {
                   return;
                 }
 
-                // Auto-format DD/MM/YYYY
+                // Auto-format and validate DD/MM/YYYY
                 const cleaned = text.replace(/\D/g, '');
-                let formatted = cleaned;
+                let formatted = '';
                 
+                if (cleaned.length > 0) {
+                  const day = cleaned.slice(0, 2);
+                  if (parseInt(day) > 31) return; // Block invalid day
+                  formatted = day;
+                }
                 if (cleaned.length > 2) {
-                  formatted = `${cleaned.slice(0, 2)}/${cleaned.slice(2)}`;
+                  const month = cleaned.slice(2, 4);
+                  if (parseInt(month) > 12) return; // Block invalid month
+                  formatted += '/' + month;
                 }
                 if (cleaned.length > 4) {
-                  formatted = `${cleaned.slice(0, 2)}/${cleaned.slice(2, 4)}/${cleaned.slice(4, 8)}`;
+                  formatted += '/' + cleaned.slice(4, 8);
                 }
                 setEditDob(formatted);
               }}
               placeholder="DD/MM/YYYY"
-              placeholderTextColor={theme.textLight}
+              placeholderTextColor={theme.textSecondary}
               keyboardType="numeric"
               maxLength={10}
             />
@@ -256,9 +312,9 @@ export const EditProfileScreen = () => {
         </View>
 
         <View style={styles.infoBox}>
-          <Info size={14} color={theme.textLight} />
-          <Text style={[styles.infoText, { color: theme.textLight }]}>
-            Updating these details will instantly reflect on your partner's app.
+          <Info size={14} color={theme.textSecondary} />
+          <Text style={[styles.infoText, { color: theme.textSecondary }]}>
+            Updating these details will instantly reflect on your partner&apos;s app.
           </Text>
         </View>
 

@@ -70,7 +70,7 @@ export const PingAnimation = ({ visible, onComplete }: { visible: boolean, onCom
         <SingleHeart 
           key={heart.id} 
           heart={heart}
-          color={theme.heartPink} 
+          color={theme.accentRose} 
         />
       ))}
     </View>

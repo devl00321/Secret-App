@@ -70,40 +70,40 @@ export const EmergencyContactModal = ({ visible, onClose }: EmergencyContactModa
             activeOpacity={1} 
             onPress={(e) => e.stopPropagation()}
           >
-            <View style={[styles.modalView, { backgroundColor: theme.surface }]}>
+            <View style={[styles.modalView, { backgroundColor: theme.bgSurface }]}>
               <ScrollView 
                 style={{ width: '100%' }} 
                 contentContainerStyle={{ alignItems: 'center' }}
                 showsVerticalScrollIndicator={false}
               >
                 <View style={styles.iconHeader}>
-                  <View style={[styles.shieldBox, { backgroundColor: theme.primary + '20' }]}>
-                    <ShieldCheck size={32} color={theme.primary} />
+                  <View style={[styles.shieldBox, { backgroundColor: theme.accentRose + '20' }]}>
+                    <ShieldCheck size={32} color={theme.accentRose} />
                   </View>
                 </View>
 
-                <Text style={[styles.title, { color: theme.text }]}>Emergency Contact</Text>
-                <Text style={[styles.subtitle, { color: theme.textLight }]}>
+                <Text style={[styles.title, { color: theme.textPrimary }]}>Emergency Contact</Text>
+                <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
                   Add a trusted person (like a parent or friend) to contact in case of an emergency.
                 </Text>
 
-                <View style={[styles.inputGroup, { backgroundColor: theme.background }]}>
-                  <User size={20} color={theme.primary} />
+                <View style={[styles.inputGroup, { backgroundColor: theme.bgPrimary }]}>
+                  <User size={20} color={theme.accentRose} />
                   <TextInput
-                    style={[styles.input, { color: theme.text }]}
+                    style={[styles.input, { color: theme.textPrimary }]}
                     placeholder="Full Name"
-                    placeholderTextColor={theme.textLight}
+                    placeholderTextColor={theme.textSecondary}
                     value={name}
                     onChangeText={setName}
                   />
                 </View>
 
-                <View style={[styles.inputGroup, { backgroundColor: theme.background }]}>
-                  <Phone size={20} color={theme.primary} />
+                <View style={[styles.inputGroup, { backgroundColor: theme.bgPrimary }]}>
+                  <Phone size={20} color={theme.accentRose} />
                   <TextInput
-                    style={[styles.input, { color: theme.text }]}
+                    style={[styles.input, { color: theme.textPrimary }]}
                     placeholder="Phone Number"
-                    placeholderTextColor={theme.textLight}
+                    placeholderTextColor={theme.textSecondary}
                     value={phone}
                     onChangeText={setPhone}
                     keyboardType="phone-pad"
@@ -113,7 +113,7 @@ export const EmergencyContactModal = ({ visible, onClose }: EmergencyContactModa
                 <TouchableOpacity
                   style={[
                     styles.saveBtn,
-                    { backgroundColor: (name.trim() && phone.trim()) ? theme.primary : theme.border }
+                    { backgroundColor: (name.trim() && phone.trim()) ? theme.accentRose : theme.borderDefault }
                   ]}
                   onPress={handleSave}
                   disabled={loading || !(name.trim() && phone.trim())}
@@ -124,7 +124,7 @@ export const EmergencyContactModal = ({ visible, onClose }: EmergencyContactModa
                 </TouchableOpacity>
 
                 <TouchableOpacity style={styles.skipBtn} onPress={onClose}>
-                  <Text style={[styles.skipText, { color: theme.textLight }]}>I'll do this later</Text>
+                  <Text style={[styles.skipText, { color: theme.textSecondary }]}>I&apos;ll do this later</Text>
                 </TouchableOpacity>
               </ScrollView>
             </View>

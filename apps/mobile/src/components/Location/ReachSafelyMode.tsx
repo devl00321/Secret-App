@@ -160,7 +160,7 @@ export const ReachSafelyMode = ({ visible, onClose }: ReachSafelyModeProps) => {
       case 'warning': return '#FFA000';
       case 'overdue': return '#FF3B30';
       case 'arrived': return '#00C853';
-      default: return theme.primary;
+      default: return theme.accentRose;
     }
   };
 
@@ -187,25 +187,25 @@ export const ReachSafelyMode = ({ visible, onClose }: ReachSafelyModeProps) => {
           <TouchableWithoutFeedback onPress={handleClose}>
             <View style={StyleSheet.absoluteFillObject} />
           </TouchableWithoutFeedback>
-          <View style={[styles.content, { backgroundColor: theme.surface }]}>
+          <View style={[styles.content, { backgroundColor: theme.bgSurface }]}>
             {phase === 'destination' ? (
               <>
                 <View style={styles.modalHeader}>
-                  <Text style={[styles.modalTitle, { color: theme.text }]}>Where are you going? 📍</Text>
+                  <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>Where are you going? 📍</Text>
                   <TouchableOpacity 
                     onPress={handleClose}
                     hitSlop={{ top: 25, bottom: 25, left: 25, right: 25 }}
                   >
-                    <X size={24} color={theme.textLight} />
+                    <X size={24} color={theme.textSecondary} />
                   </TouchableOpacity>
                 </View>
 
                 <ScrollView style={styles.selectorList} showsVerticalScrollIndicator={false}>
-                  {savedPlaces.length === 0 ? (
+                  {(!Array.isArray(savedPlaces) || savedPlaces.length === 0) ? (
                     <View style={styles.emptyState}>
-                      <MapPin size={40} color={theme.textLight} style={{ opacity: 0.3, marginBottom: 10 }} />
-                      <Text style={[styles.emptyText, { color: theme.textLight }]}>No saved places yet.</Text>
-                      <Text style={[styles.emptySubText, { color: theme.textLight }]}>
+                      <MapPin size={40} color={theme.textSecondary} style={{ opacity: 0.3, marginBottom: 10 }} />
+                      <Text style={[styles.emptyText, { color: theme.textSecondary }]}>No saved places yet.</Text>
+                      <Text style={[styles.emptySubText, { color: theme.textSecondary }]}>
                         Add your Home, Work or Tuition in Settings first!
                       </Text>
                     </View>
@@ -218,11 +218,11 @@ export const ReachSafelyMode = ({ visible, onClose }: ReachSafelyModeProps) => {
                           style={[styles.placeOption, { backgroundColor: theme.isDark ? '#222' : '#F8F8F8' }]}
                           onPress={() => handleSelectPlace(place)}
                         >
-                          <View style={[styles.placeIconCircle, { backgroundColor: theme.primary + '15' }]}>
-                            <Icon size={20} color={theme.primary} />
+                          <View style={[styles.placeIconCircle, { backgroundColor: theme.accentRose + '15' }]}>
+                            <Icon size={20} color={theme.accentRose} />
                           </View>
-                          <Text style={[styles.placeOptionName, { color: theme.text }]}>{place.name}</Text>
-                          <ChevronRight size={18} color={theme.textLight} />
+                          <Text style={[styles.placeOptionName, { color: theme.textPrimary }]}>{place.name}</Text>
+                          <ChevronRight size={18} color={theme.textSecondary} />
                         </TouchableOpacity>
                       );
                     })
@@ -230,7 +230,7 @@ export const ReachSafelyMode = ({ visible, onClose }: ReachSafelyModeProps) => {
                 </ScrollView>
 
                 {savedPlaces.length > 0 && (
-                  <Text style={[styles.modalNote, { color: theme.textLight }]}>
+                  <Text style={[styles.modalNote, { color: theme.textSecondary }]}>
                     Select your destination to start Walk Safe monitoring.
                   </Text>
                 )}
@@ -240,23 +240,23 @@ export const ReachSafelyMode = ({ visible, onClose }: ReachSafelyModeProps) => {
               <>
                 <View style={styles.modalHeader}>
                   <TouchableOpacity onPress={() => setPhase('destination')}>
-                    <Text style={[styles.backLink, { color: theme.primary }]}>← Back</Text>
+                    <Text style={[styles.backLink, { color: theme.accentRose }]}>← Back</Text>
                   </TouchableOpacity>
                   <TouchableOpacity 
                     onPress={handleClose}
                     hitSlop={{ top: 25, bottom: 25, left: 25, right: 25 }}
                   >
-                    <X size={24} color={theme.textLight} />
+                    <X size={24} color={theme.textSecondary} />
                   </TouchableOpacity>
                 </View>
 
                 <View style={styles.timerHeader}>
-                  <View style={[styles.timerIconBox, { backgroundColor: theme.primary + '15' }]}>
-                    <Timer size={28} color={theme.primary} />
+                  <View style={[styles.timerIconBox, { backgroundColor: theme.accentRose + '15' }]}>
+                    <Timer size={28} color={theme.accentRose} />
                   </View>
-                  <Text style={[styles.timerTitle, { color: theme.text }]}>
+                  <Text style={[styles.timerTitle, { color: theme.textPrimary }]}>
                     How long to reach{'\n'}
-                    <Text style={{ color: theme.primary }}>{selectedPlace?.name}</Text>?
+                    <Text style={{ color: theme.accentRose }}>{selectedPlace?.name}</Text>?
                   </Text>
                 </View>
 
@@ -264,9 +264,9 @@ export const ReachSafelyMode = ({ visible, onClose }: ReachSafelyModeProps) => {
                 <View style={styles.wheelContainer}>
                   {/* Hours wheel */}
                   <View style={styles.wheelColumn}>
-                    <Text style={[styles.wheelLabel, { color: theme.textLight }]}>hours</Text>
+                    <Text style={[styles.wheelLabel, { color: theme.textSecondary }]}>hours</Text>
                     <View style={styles.wheelWrapper}>
-                      <View style={[styles.wheelHighlight, { borderColor: theme.primary + '40', backgroundColor: theme.primary + '08' }]} />
+                      <View style={[styles.wheelHighlight, { borderColor: theme.accentRose + '40', backgroundColor: theme.accentRose + '08' }]} />
                       <ScrollView
                         style={styles.wheel}
                         contentContainerStyle={{ paddingVertical: ITEM_HEIGHT * 2 }}
@@ -282,7 +282,7 @@ export const ReachSafelyMode = ({ visible, onClose }: ReachSafelyModeProps) => {
                           <View key={h} style={styles.wheelItem}>
                             <Text style={[
                               styles.wheelItemText,
-                              { color: selectedHours === h ? theme.text : theme.textLight + '60' },
+                              { color: selectedHours === h ? theme.textPrimary : theme.textSecondary + '60' },
                               selectedHours === h && styles.wheelItemActive,
                             ]}>
                               {h}
@@ -294,13 +294,13 @@ export const ReachSafelyMode = ({ visible, onClose }: ReachSafelyModeProps) => {
                   </View>
 
                   {/* Separator */}
-                  <Text style={[styles.wheelSeparator, { color: theme.text }]}>:</Text>
+                  <Text style={[styles.wheelSeparator, { color: theme.textPrimary }]}>:</Text>
 
                   {/* Minutes wheel */}
                   <View style={styles.wheelColumn}>
-                    <Text style={[styles.wheelLabel, { color: theme.textLight }]}>min</Text>
+                    <Text style={[styles.wheelLabel, { color: theme.textSecondary }]}>min</Text>
                     <View style={styles.wheelWrapper}>
-                      <View style={[styles.wheelHighlight, { borderColor: theme.primary + '40', backgroundColor: theme.primary + '08' }]} />
+                      <View style={[styles.wheelHighlight, { borderColor: theme.accentRose + '40', backgroundColor: theme.accentRose + '08' }]} />
                       <ScrollView
                         style={styles.wheel}
                         contentContainerStyle={{ paddingVertical: ITEM_HEIGHT * 2 }}
@@ -317,7 +317,7 @@ export const ReachSafelyMode = ({ visible, onClose }: ReachSafelyModeProps) => {
                           <View key={m} style={styles.wheelItem}>
                             <Text style={[
                               styles.wheelItemText,
-                              { color: selectedMinutes === m ? theme.text : theme.textLight + '60' },
+                              { color: selectedMinutes === m ? theme.textPrimary : theme.textSecondary + '60' },
                               selectedMinutes === m && styles.wheelItemActive,
                             ]}>
                               {m.toString().padStart(2, '0')}
@@ -329,14 +329,14 @@ export const ReachSafelyMode = ({ visible, onClose }: ReachSafelyModeProps) => {
                   </View>
                 </View>
 
-                <Text style={[styles.timerDisplay, { color: theme.text }]}>
+                <Text style={[styles.timerDisplay, { color: theme.textPrimary }]}>
                   {selectedHours > 0 ? `${selectedHours} hr ` : ''}{selectedMinutes} min
                 </Text>
 
                 <TouchableOpacity
                   style={[
                     styles.startBtn, 
-                    { backgroundColor: (selectedHours > 0 || selectedMinutes > 0) ? theme.primary : theme.border }
+                    { backgroundColor: (selectedHours > 0 || selectedMinutes > 0) ? theme.accentRose : theme.borderDefault }
                   ]}
                   onPress={handleStartWalkSafe}
                   disabled={selectedHours === 0 && selectedMinutes === 0}
@@ -345,8 +345,8 @@ export const ReachSafelyMode = ({ visible, onClose }: ReachSafelyModeProps) => {
                   <Text style={styles.startBtnText}>Start Walk Safe</Text>
                 </TouchableOpacity>
 
-                <Text style={[styles.timerNote, { color: theme.textLight }]}>
-                  If you don't reach in time, we'll ask if you're safe.{'\n'}No response in 2 min = auto SOS.
+                <Text style={[styles.timerNote, { color: theme.textSecondary }]}>
+                  If you don&apos;t reach in time, we&apos;ll ask if you&apos;re safe.{'\n'}No response in 2 min = auto SOS.
                 </Text>
               </>
             )}
@@ -361,7 +361,7 @@ export const ReachSafelyMode = ({ visible, onClose }: ReachSafelyModeProps) => {
     const statusColor = getStatusColor();
 
     return (
-      <View style={[styles.activeContainer, { backgroundColor: theme.surface }]}>
+      <View style={[styles.activeContainer, { backgroundColor: theme.bgSurface }]}>
         <View style={styles.header}>
           <LinearGradient 
             colors={[statusColor, statusColor + 'AA']} 
@@ -372,10 +372,10 @@ export const ReachSafelyMode = ({ visible, onClose }: ReachSafelyModeProps) => {
             <Navigation size={22} color="white" />
           </LinearGradient>
           <View style={styles.headerText}>
-            <Text style={[styles.status, { color: theme.text }]} numberOfLines={1}>
+            <Text style={[styles.status, { color: theme.textPrimary }]} numberOfLines={1}>
               Heading to {walkSafe.destination?.name || 'Destination'} 🏃‍♂️
             </Text>
-            <Text style={[styles.eta, { color: theme.textLight }]} numberOfLines={1}>
+            <Text style={[styles.eta, { color: theme.textSecondary }]} numberOfLines={1}>
               Walk Safe active • Partner notified 💙
             </Text>
           </View>
@@ -386,42 +386,42 @@ export const ReachSafelyMode = ({ visible, onClose }: ReachSafelyModeProps) => {
             <Text style={[styles.metricValue, { color: statusColor }]}>
               {timeLeft || '--:--'}
             </Text>
-            <Text style={[styles.metricLabel, { color: theme.textLight }]}>TIME LEFT</Text>
+            <Text style={[styles.metricLabel, { color: theme.textSecondary }]}>TIME LEFT</Text>
           </View>
-          <View style={[styles.divider, { backgroundColor: theme.border }]} />
+          <View style={[styles.divider, { backgroundColor: theme.borderDefault }]} />
           <View style={styles.metric}>
-            <Text style={[styles.metricValue, { color: theme.primary }]}>
+            <Text style={[styles.metricValue, { color: theme.accentRose }]}>
               {distanceLeft || '--'}
             </Text>
-            <Text style={[styles.metricLabel, { color: theme.textLight }]}>DISTANCE</Text>
+            <Text style={[styles.metricLabel, { color: theme.textSecondary }]}>DISTANCE</Text>
           </View>
-          <View style={[styles.divider, { backgroundColor: theme.border }]} />
+          <View style={[styles.divider, { backgroundColor: theme.borderDefault }]} />
           <View style={styles.metric}>
             <Text style={[styles.metricValue, { color: statusColor }]}>
               {getStatusLabel()}
             </Text>
-            <Text style={[styles.metricLabel, { color: theme.textLight }]}>STATUS</Text>
+            <Text style={[styles.metricLabel, { color: theme.textSecondary }]}>STATUS</Text>
           </View>
         </View>
 
         <View style={styles.dashActions}>
           <TouchableOpacity 
-            style={[styles.reachedButton, { backgroundColor: theme.primary }]}
+            style={[styles.reachedButton, { backgroundColor: theme.accentRose }]}
             onPress={handleReachedSafely}
             activeOpacity={0.8}
           >
             <CheckCircle2 size={18} color="white" />
-            <Text style={styles.reachedButtonText}>I've Reached Safely</Text>
+            <Text style={styles.reachedButtonText}>I&apos;ve Reached Safely</Text>
           </TouchableOpacity>
 
           <TouchableOpacity 
-            style={[styles.cancelTripBtn, { borderColor: theme.border }]}
+            style={[styles.cancelTripBtn, { borderColor: theme.borderDefault }]}
             onPress={handleCancelWalkSafe}
             activeOpacity={0.8}
             hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
           >
-            <X size={16} color={theme.textLight} />
-            <Text style={[styles.cancelTripText, { color: theme.textLight }]}>Cancel</Text>
+            <X size={16} color={theme.textSecondary} />
+            <Text style={[styles.cancelTripText, { color: theme.textSecondary }]}>Cancel</Text>
           </TouchableOpacity>
         </View>
       </View>

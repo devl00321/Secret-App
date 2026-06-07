@@ -169,34 +169,39 @@ export const EmergencyContactsScreen = () => {
   const renderItem = useCallback(({ item, drag, isActive }: RenderItemParams<EmergencyContact>) => {
     return (
       <ScaleDecorator>
-        <TouchableOpacity
-          onLongPress={drag}
-          disabled={isActive}
+        <View
           style={[
             styles.itemContainer,
             { 
-              backgroundColor: isActive ? theme.primary + '20' : theme.surface,
-              borderColor: isActive ? theme.primary : theme.border
+              backgroundColor: isActive ? theme.accentRose + '20' : theme.bgSurface,
+              borderColor: isActive ? theme.accentRose : theme.borderDefault,
+              opacity: isActive ? 0.95 : 1,
             }
           ]}
         >
-          <View style={styles.dragHandle}>
-            <GripVertical size={20} color={theme.textLight} />
-          </View>
+          {/* Drag handle — touch here to drag immediately */}
+          <TouchableOpacity
+            onPressIn={drag}
+            disabled={isActive}
+            style={styles.dragHandle}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <GripVertical size={22} color={isActive ? theme.accentRose : theme.textSecondary} />
+          </TouchableOpacity>
           
           <View style={styles.itemContent}>
             <View style={styles.nameRow}>
-              <Text style={[styles.contactName, { color: theme.text }]}>{item.name}</Text>
+              <Text style={[styles.contactName, { color: theme.textPrimary }]}>{item.name}</Text>
               {item.priority === 0 && (
-                <View style={[styles.priorityBadge, { backgroundColor: theme.primary + '20' }]}>
-                  <ShieldCheck size={12} color={theme.primary} />
-                  <Text style={[styles.priorityText, { color: theme.primary }]}>PRIMARY</Text>
+                <View style={[styles.priorityBadge, { backgroundColor: theme.accentRose + '20' }]}>
+                  <ShieldCheck size={12} color={theme.accentRose} />
+                  <Text style={[styles.priorityText, { color: theme.accentRose }]}>PRIMARY</Text>
                 </View>
               )}
             </View>
             <View style={styles.phoneRow}>
-              <Phone size={14} color={theme.textLight} />
-              <Text style={[styles.contactPhone, { color: theme.textLight }]}>{item.phone}</Text>
+              <Phone size={14} color={theme.textSecondary} />
+              <Text style={[styles.contactPhone, { color: theme.textSecondary }]}>{item.phone}</Text>
             </View>
           </View>
 
@@ -204,20 +209,21 @@ export const EmergencyContactsScreen = () => {
             style={styles.deleteBtn} 
             onPress={() => removeContact(item.id)}
           >
-            <Trash2 size={20} color={theme.error || '#FF4444'} />
+            <Trash2 size={20} color={theme.dangerRed || '#FF4444'} />
           </TouchableOpacity>
-        </TouchableOpacity>
+        </View>
       </ScaleDecorator>
     );
-  }, [theme]);
+  }, [theme, contacts]);
+
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.bgPrimary }]}>
         <Header title="Manage Guardians" showBack />
         
         <View style={styles.headerInfo}>
-          <Text style={[styles.subtitle, { color: theme.textLight }]}>
+          <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
             Set the priority of your emergency contacts. The top person will be contacted first during an SOS event.
           </Text>
         </View>
@@ -235,14 +241,14 @@ export const EmergencyContactsScreen = () => {
           />
         ) : (
           <View style={styles.emptyState}>
-            <AlertCircle size={60} color={theme.textLight} strokeWidth={1} />
-            <Text style={[styles.emptyText, { color: theme.textLight }]}>No guardians added yet</Text>
+            <AlertCircle size={60} color={theme.textSecondary} strokeWidth={1} />
+            <Text style={[styles.emptyText, { color: theme.textSecondary }]}>No guardians added yet</Text>
           </View>
         )}
 
         <View style={styles.footer}>
           <TouchableOpacity 
-            style={[styles.addBtn, { backgroundColor: theme.primary }]}
+            style={[styles.addBtn, { backgroundColor: theme.accentRose }]}
             onPress={() => Alert.alert("Add Contact", "Choose method", [
               { text: "Phone Book", onPress: pickContact },
               { text: "Type Manually", onPress: () => setShowManualModal(true) },
@@ -252,7 +258,7 @@ export const EmergencyContactsScreen = () => {
             <UserPlus size={24} color="white" />
             <Text style={styles.addBtnText}>Add New Guardian</Text>
           </TouchableOpacity>
-          <Text style={[styles.limitText, { color: theme.textLight }]}>
+          <Text style={[styles.limitText, { color: theme.textSecondary }]}>
             {contacts.length} / 10 Contacts Used
           </Text>
         </View>
@@ -270,33 +276,33 @@ export const EmergencyContactsScreen = () => {
               activeOpacity={1}
               onPress={() => setShowManualModal(false)}
             />
-            <View style={[styles.manualModal, { backgroundColor: theme.surface }]}>
-              <Text style={[styles.modalTitle, { color: theme.text }]}>Add Guardian</Text>
+            <View style={[styles.manualModal, { backgroundColor: theme.bgSurface }]}>
+              <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>Add Guardian</Text>
               <TextInput
-                style={[styles.manualInput, { backgroundColor: theme.background, color: theme.text }]}
+                style={[styles.manualInput, { backgroundColor: theme.bgPrimary, color: theme.textPrimary }]}
                 placeholder="Name"
-                placeholderTextColor={theme.textLight}
+                placeholderTextColor={theme.textSecondary}
                 value={manualName}
                 onChangeText={setManualName}
                 autoFocus
               />
               <TextInput
-                style={[styles.manualInput, { backgroundColor: theme.background, color: theme.text }]}
+                style={[styles.manualInput, { backgroundColor: theme.bgPrimary, color: theme.textPrimary }]}
                 placeholder="Phone Number"
-                placeholderTextColor={theme.textLight}
+                placeholderTextColor={theme.textSecondary}
                 value={manualPhone}
                 onChangeText={setManualPhone}
                 keyboardType="phone-pad"
               />
               <View style={styles.modalActions}>
                 <TouchableOpacity 
-                  style={[styles.modalBtn, { backgroundColor: theme.border }]}
+                  style={[styles.modalBtn, { backgroundColor: theme.borderDefault }]}
                   onPress={() => setShowManualModal(false)}
                 >
-                  <Text style={[styles.modalBtnText, { color: theme.text }]}>Cancel</Text>
+                  <Text style={[styles.modalBtnText, { color: theme.textPrimary }]}>Cancel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity 
-                  style={[styles.modalBtn, { backgroundColor: theme.primary }]}
+                  style={[styles.modalBtn, { backgroundColor: theme.accentRose }]}
                   onPress={addManualContact}
                 >
                   <Text style={[styles.modalBtnText, { color: 'white' }]}>Add</Text>
@@ -308,7 +314,7 @@ export const EmergencyContactsScreen = () => {
 
         {loading && (
           <View style={styles.loadingOverlay}>
-            <ActivityIndicator size="large" color={theme.primary} />
+            <ActivityIndicator size="large" color={theme.accentRose} />
           </View>
         )}
       </SafeAreaView>

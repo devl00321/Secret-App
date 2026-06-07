@@ -10,6 +10,8 @@ interface SettingsState {
   // Other settings can go here
   theme: 'light' | 'dark' | 'system';
   setTheme: (theme: 'light' | 'dark' | 'system') => void;
+  relationshipAiEnabled: boolean;
+  setRelationshipAiEnabled: (enabled: boolean) => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -21,6 +23,8 @@ export const useSettingsStore = create<SettingsState>()(
       setReadReceiptsEnabled: (enabled) => set({ readReceiptsEnabled: enabled }),
       theme: 'system',
       setTheme: (theme) => set({ theme }),
+      relationshipAiEnabled: true,
+      setRelationshipAiEnabled: (enabled) => set({ relationshipAiEnabled: enabled }),
     }),
     {
       name: 'luvv-settings',

@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, View, Text, ScrollView, Switch, TouchableOpacity, Platform, Alert } from 'react-native';
+import { StyleSheet, View, Text, ScrollView, Switch, TouchableOpacity, Platform, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Header } from '../components/Header';
 import { Card } from '../components/Card';
@@ -18,19 +18,21 @@ import {
   Lock,
   Wifi,
   WifiOff,
-  CheckCheck
+  CheckCheck,
+  Heart
 } from 'lucide-react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
-
 import { privacyService } from '../services/privacyService';
 import { useChatStore } from '../store/chat';
+import { exportBackup, BackupPayload } from '../services/backupService';
 
 export const PrivacyScreen = () => {
   const theme = useTheme();
   const { isSharing, setSharing, sharingDuration, setSharingDuration } = useLocationStore();
-  const { currentUserProfile, setCurrentUserProfile, coupleId, logout } = useAuthStore();
+  const { currentUserProfile, setCurrentUserProfile, coupleId, logout, user, partner } = useAuthStore();
   const { readReceiptsEnabled, setReadReceiptsEnabled } = useSettingsStore();
   const { clearMessages } = useChatStore();
+  const [exporting, setExporting] = React.useState(false);
 
   const handleToggleOnlineStatus = async (value: boolean) => {
     if (currentUserProfile) {
@@ -47,6 +49,48 @@ export const PrivacyScreen = () => {
   const handleChangeSharingDuration = async (duration: '15m' | '1h' | 'always') => {
     setSharingDuration(duration);
     await privacyService.updateLocationPrivacy(isSharing, duration);
+  };
+
+  const handleExportData = async () => {
+    if (!user?.uid || !currentUserProfile) {
+      Alert.alert('Error', 'Could not load your profile data.');
+      return;
+    }
+    setExporting(true);
+    try {
+      const settings = useSettingsStore.getState();
+      const locationStore = useLocationStore.getState();
+      const payload: BackupPayload = {
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        uid: user.uid,
+        coupleId: coupleId || null,
+        partnerUid: partner?.id || null,
+        profile: {
+          displayName: currentUserProfile.displayName || null,
+          email: user.email || null,
+          photoURL: currentUserProfile.photoURL || null,
+          anniversaryDate: currentUserProfile.anniversaryDate || null,
+          gender: currentUserProfile.gender || null,
+          partnerNickname: currentUserProfile.partnerNickname || null,
+          isOnline: currentUserProfile.isOnline ?? true,
+          phoneNumber: currentUserProfile.phoneNumber || null,
+        },
+        emergencyContacts: currentUserProfile.emergencyContacts || [],
+        savedPlaces: locationStore.savedPlaces || [],
+        settings: {
+          biometricLockEnabled: settings.biometricLockEnabled,
+          readReceiptsEnabled: settings.readReceiptsEnabled,
+          relationshipAiEnabled: settings.relationshipAiEnabled,
+          theme: settings.theme,
+        },
+      };
+      await exportBackup(user.uid, payload);
+    } catch (err: any) {
+      Alert.alert('Export Failed', err.message || 'Something went wrong.');
+    } finally {
+      setExporting(false);
+    }
   };
 
   const handleClearChat = () => {
@@ -75,19 +119,31 @@ export const PrivacyScreen = () => {
   const handleDeleteAccount = () => {
     Alert.alert(
       '⚠️ Delete Account Permanently?',
-      'This will erase your profile, disconnect your partner, and delete all your data. This is irreversible.',
+      'This will erase your profile, disconnect your partner, and delete all your data. This is irreversible.\n\nFor security, you may be asked to log in again.',
       [
         { text: 'Cancel', style: 'cancel' },
         { 
           text: 'Delete Permanently', 
           style: 'destructive', 
           onPress: async () => {
-            const success = await privacyService.deleteAccount();
-            if (success) {
-              await logout();
-              // Navigation to auth will happen automatically due to store listener
-            } else {
-              Alert.alert('Error', 'Failed to delete account. Please try logging in again first.');
+            try {
+              const success = await privacyService.deleteAccount();
+              if (success) {
+                await logout();
+              }
+            } catch (err: any) {
+              if (err.message?.includes('requires-recent-login') || err.code?.includes('requires-recent-login')) {
+                Alert.alert(
+                  'Re-authentication Required',
+                  'For your security, please log out and log back in before deleting your account.',
+                  [
+                    { text: 'Log Out now', onPress: () => logout() },
+                    { text: 'Cancel', style: 'cancel' }
+                  ]
+                );
+              } else {
+                Alert.alert('Error', 'Failed to delete account. Please try again later.');
+              }
             }
           } 
         }
@@ -114,37 +170,37 @@ export const PrivacyScreen = () => {
     <TouchableOpacity 
       activeOpacity={type === 'link' ? 0.7 : 1}
       onPress={onPress}
-      style={[styles.settingRow, { borderBottomColor: theme.border }]}
+      style={[styles.settingRow, { borderBottomColor: theme.borderDefault }]}
     >
       <View style={styles.settingMain}>
         <View style={[styles.iconBox, { backgroundColor: iconBg }]}>
-          <Icon size={20} color={iconBg === theme.primarySoft ? theme.primary : '#FFF'} />
+          <Icon size={20} color={iconBg === theme.accentRoseSoft ? theme.accentRose : '#FFF'} />
         </View>
         <View style={styles.textContent}>
-          <Text style={[styles.label, { color: theme.text }]}>{label}</Text>
-          <Text style={[styles.desc, { color: theme.textLight }]}>{desc}</Text>
+          <Text style={[styles.label, { color: theme.textPrimary }]}>{label}</Text>
+          <Text style={[styles.desc, { color: theme.textSecondary }]}>{desc}</Text>
         </View>
       </View>
       {type === 'switch' ? (
         <Switch 
           value={value} 
           onValueChange={onValueChange}
-          trackColor={{ false: theme.border, true: theme.primary }}
+          trackColor={{ false: theme.borderDefault, true: theme.accentRose }}
           thumbColor={Platform.OS === 'android' ? 'white' : undefined}
         />
       ) : (
-        <ChevronRight size={18} color={theme.textLight} />
+        <ChevronRight size={18} color={theme.textSecondary} />
       )}
     </TouchableOpacity>
   );
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.bgPrimary }]}>
       <Header title="Privacy" showBack />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         
         <Animated.View entering={FadeInDown.delay(100).duration(500)}>
-          <Text style={[styles.sectionTitle, { color: theme.textLight }]}>Visibility</Text>
+          <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>Visibility</Text>
           <Card style={styles.card}>
             {renderSettingRow({
               icon: currentUserProfile?.isOnline ? Wifi : WifiOff,
@@ -166,12 +222,27 @@ export const PrivacyScreen = () => {
           </Card>
         </Animated.View>
 
+        <Animated.View entering={FadeInDown.delay(150).duration(500)}>
+          <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>App Experience</Text>
+          <Card style={styles.card}>
+            {renderSettingRow({
+              icon: Heart,
+              iconBg: '#FF6B6B',
+              label: 'Relationship AI',
+              desc: 'Personalized date ideas & connection prompts',
+              value: useSettingsStore().relationshipAiEnabled,
+              onValueChange: useSettingsStore().setRelationshipAiEnabled,
+              noBorder: true
+            })}
+          </Card>
+        </Animated.View>
+
         <Animated.View entering={FadeInDown.delay(200).duration(500)}>
-          <Text style={[styles.sectionTitle, { color: theme.textLight }]}>Location Privacy</Text>
+          <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>Location Privacy</Text>
           <Card style={styles.card}>
             {renderSettingRow({
               icon: MapPin,
-              iconBg: theme.primary,
+              iconBg: theme.accentRose,
               label: 'Share Live Location',
               desc: 'Allow partner to see your real-time path',
               value: isSharing,
@@ -180,23 +251,23 @@ export const PrivacyScreen = () => {
             
             {isSharing && (
               <View style={styles.durationSection}>
-                <Text style={[styles.subLabel, { color: theme.textLight }]}>SHARING DURATION</Text>
+                <Text style={[styles.subLabel, { color: theme.textSecondary }]}>SHARING DURATION</Text>
                 <View style={styles.durationGrid}>
                   {durations.map((d) => (
                     <TouchableOpacity 
                       key={d.value}
                       style={[
                         styles.durationBtn,
-                        { backgroundColor: theme.surface, borderColor: theme.border },
-                        sharingDuration === d.value && { borderColor: theme.primary, backgroundColor: theme.primarySoft }
+                        { backgroundColor: theme.bgSurface, borderColor: theme.borderDefault },
+                        sharingDuration === d.value && { borderColor: theme.accentRose, backgroundColor: theme.accentRoseSoft }
                       ]}
                       onPress={() => handleChangeSharingDuration(d.value as any)}
                     >
-                      <Clock size={14} color={sharingDuration === d.value ? theme.primary : theme.textLight} />
+                      <Clock size={14} color={sharingDuration === d.value ? theme.accentRose : theme.textSecondary} />
                       <Text style={[
                         styles.durationText,
-                        { color: theme.textLight },
-                        sharingDuration === d.value && { color: theme.primary, fontWeight: '700' }
+                        { color: theme.textSecondary },
+                        sharingDuration === d.value && { color: theme.accentRose, fontWeight: '700' }
                       ]}>{d.label}</Text>
                     </TouchableOpacity>
                   ))}
@@ -204,9 +275,9 @@ export const PrivacyScreen = () => {
               </View>
             )}
             
-            <View style={[styles.infoBox, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-              <Shield size={16} color={theme.primary} />
-              <Text style={[styles.infoText, { color: theme.textLight }]}>
+            <View style={[styles.infoBox, { backgroundColor: theme.bgSurface, borderColor: theme.borderDefault }]}>
+              <Shield size={16} color={theme.accentRose} />
+              <Text style={[styles.infoText, { color: theme.textSecondary }]}>
                 Your location data is end-to-end encrypted and only accessible by your paired partner.
               </Text>
             </View>
@@ -214,15 +285,15 @@ export const PrivacyScreen = () => {
         </Animated.View>
 
         <Animated.View entering={FadeInDown.delay(300).duration(500)}>
-          <Text style={[styles.sectionTitle, { color: theme.textLight }]}>Data & Security</Text>
+          <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>Data & Security</Text>
           <Card style={styles.card}>
             {renderSettingRow({
               icon: Download,
               iconBg: '#0EA5E9',
-              label: 'Export My Data',
-              desc: 'Get a copy of all your app data',
+              label: exporting ? 'Preparing backup…' : 'Export My Data',
+              desc: 'Encrypted .luvvbackup — restore anytime',
               type: 'link',
-              onPress: () => Alert.alert('Request Sent', 'Your data export is being prepared.')
+              onPress: handleExportData
             })}
             {renderSettingRow({
               icon: Trash2,

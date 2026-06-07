@@ -1,0 +1,11 @@
+# EAS Build Ignore Config
+# This file is used by EAS instead of .gitignore when packaging the app for build.
+# We exclude node_modules and build output, but ALLOW configuration files (.env, google-services.json, GoogleService-Info.plist)
+# so the remote builder can access them safely without committing them to git/GitHub.
+
+node_modules/
+.expo/
+dist/
+npm-debug.*
+yarn-debug.*
+yarn-error.*

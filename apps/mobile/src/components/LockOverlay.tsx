@@ -19,16 +19,16 @@ export const LockOverlay = ({
   const theme = useTheme();
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.background }]}>
-      <View style={[styles.lockCircle, { backgroundColor: theme.primary + '10' }]}>
-        <Lock size={60} color={theme.primary} />
+    <View style={[styles.container, { backgroundColor: theme.bgPrimary }]}>
+      <View style={[styles.lockCircle, { backgroundColor: theme.accentRose + '10' }]}>
+        <Lock size={60} color={theme.accentRose} />
       </View>
-      <Text style={[styles.lockTitle, { color: theme.text }]}>{title}</Text>
-      <Text style={[styles.lockDesc, { color: theme.textLight }]}>
+      <Text style={[styles.lockTitle, { color: theme.textPrimary }]}>{title}</Text>
+      <Text style={[styles.lockDesc, { color: theme.textSecondary }]}>
         {description}
       </Text>
       <TouchableOpacity 
-        style={[styles.unlockButton, { backgroundColor: theme.primary }]}
+        style={[styles.unlockButton, { backgroundColor: theme.accentRose }]}
         onPress={onUnlock}
         disabled={isAuthenticating}
       >

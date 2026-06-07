@@ -14,7 +14,7 @@
       },
       "oauth_client": [
         {
-          "client_id": "941648671576-jemhdqd2u7rq67jq60iob39oquqorgls.apps.googleusercontent.com",
+          "client_id": "941648671576-us2vqkp9vd326e40po2tct8it34huo1j.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
             "package_name": "com.ripu.loveapp",
@@ -28,7 +28,7 @@
       ],
       "api_key": [
         {
-          "current_key": "AIzaSyDBzJyB0cRA0db_qTfc_tNTq-3kYVpxIws"
+          "current_key": "AIzaSyBwVyuAZeijIo9BnAt3jImcASxqaWG_vb0"
         }
       ],
       "services": {

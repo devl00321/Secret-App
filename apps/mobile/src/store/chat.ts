@@ -4,14 +4,15 @@ import { db, serverTimestamp, storageInstance, collection, doc, addDoc, deleteDo
 import { encryptionService } from '../services/encryptionService';
 import { useAuthStore } from './useAuthStore';
 import { encryptedStorage } from '../services/secureStorage';
-import * as FileSystem from 'expo-file-system/legacy';
+import * as FileSystem from 'expo-file-system/src/legacy';
+import { streakService } from '../services/streakService';
 
 interface Message {
   id: string;
   text: string;
   imageUrl?: string;
   videoUrl?: string;
-  type?: 'text' | 'image' | 'video';
+  type?: 'text' | 'image' | 'video' | 'reaction';
   senderId: string;
   coupleId: string;
   createdAt?: any;
@@ -32,7 +33,7 @@ interface ChatState {
   loading: boolean;
   clearMessages: () => void;
   subscribeToMessages: (coupleId: string, currentUserId: string) => () => void;
-  sendMessage: (text: string, senderId: string, coupleId: string, imageUrl?: string) => Promise<void>;
+  sendMessage: (text: string, senderId: string, coupleId: string, imageUrl?: string, type?: 'text' | 'image' | 'video' | 'reaction') => Promise<void>;
   sendMedia: (uri: string, type: 'image' | 'video', senderId: string, coupleId: string) => Promise<void>;
   cancelUpload: (messageId: string) => void;
   deleteMessage: (messageId: string, coupleId: string) => Promise<void>;
@@ -125,7 +126,7 @@ export const useChatStore = create<ChatState>()(
                     const extension = decodedPath.split('.').pop() || (isVideo ? 'mp4' : 'jpg');
                     const filename = `media_${id}.${extension}`;
                     
-                    const localUri = `${(FileSystem as any).documentDirectory}${filename}`;
+                    const localUri = `${FileSystem.documentDirectory}${filename}`;
                     
                     FileSystem.getInfoAsync(localUri).then(async (fileInfo) => {
                       if (!fileInfo.exists) {
@@ -172,27 +173,11 @@ export const useChatStore = create<ChatState>()(
                     }));
                   });
                 }
-
-                // PRIVACY CLEANUP TRIGGER (Sender side)
-                if (data.senderId === currentUserId && data.isRead) {
-                  const storagePath = data.storagePath;
-                  setTimeout(async () => {
-                    try {
-                      await deleteDoc(doc(db, 'couples', coupleId, 'messages', id));
-                      if (storagePath) {
-                        await storageInstance.ref(`chat_media/${storagePath}`).delete();
-                      }
-                    } catch (e) {}
-                  }, 120000);
-                }
               }
 
 
               if (change.type === 'removed') {
-                const existing = updatedMessages.find(m => m.id === id);
-                if (existing && !existing.isRead) {
-                  updatedMessages = updatedMessages.filter(m => m.id !== id);
-                }
+                updatedMessages = updatedMessages.filter(m => m.id !== id);
               }
             });
 
@@ -242,13 +227,13 @@ export const useChatStore = create<ChatState>()(
           }));
 
           uploadTask.on('state_changed', 
-            (snapshot) => {
+            (snapshot: any) => {
               const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
               set(state => ({
                 uploadProgress: { ...state.uploadProgress, [tempId]: progress }
               }));
             }, 
-            (error) => {
+            (error: any) => {
               console.error('Upload Error:', error);
               set(state => ({
                 messages: state.messages.filter(m => m.id !== tempId)
@@ -257,7 +242,7 @@ export const useChatStore = create<ChatState>()(
             async () => {
               const downloadURL = await storageRef.getDownloadURL();
               
-              await addDoc(collection(db, 'couples', coupleId, 'messages'), {
+              addDoc(collection(db, 'couples', coupleId, 'messages'), {
                 text: '',
                 senderId,
                 createdAt: serverTimestamp(),
@@ -267,7 +252,9 @@ export const useChatStore = create<ChatState>()(
                 videoUrl: type === 'video' ? downloadURL : null,
                 storagePath: fileName,
                 type,
-              });
+              }).catch(err => console.error('addDoc error in sendMedia:', err));
+
+              streakService.recordInteraction(type === 'image' ? 'image' : 'message');
 
               set(state => ({
                 messages: state.messages.filter(m => m.id !== tempId),
@@ -295,7 +282,7 @@ export const useChatStore = create<ChatState>()(
         }
       },
 
-      sendMessage: async (text, senderId, coupleId, imageUrl) => {
+      sendMessage: async (text, senderId, coupleId, imageUrl, type = 'text') => {
         try {
           const { sharedSecret } = useAuthStore.getState();
           const activeSecret = sharedSecret || encryptionService.getLegacySecret(coupleId);
@@ -307,7 +294,10 @@ export const useChatStore = create<ChatState>()(
             createdAt: serverTimestamp(),
             isRead: false,
             isDelivered: false,
+            type,
           });
+          
+          streakService.recordInteraction(imageUrl ? 'image' : 'message');
         } catch (error) {
           console.error('Error sending message:', error);
         }

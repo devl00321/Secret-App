@@ -153,16 +153,16 @@ export const ChatScreen = () => {
       styles.emptyContainer, 
       { transform: [{ scaleY: -1 }] }
     ]}>
-      <View style={[styles.emptyHeartWrapper, { backgroundColor: theme.surface, ...theme.shadows.soft }]}>
-        <Heart size={40} color={theme.heartPink} fill={theme.heartPink} opacity={0.2} />
+      <View style={[styles.emptyHeartWrapper, { backgroundColor: theme.bgSurface, borderColor: theme.borderDefault, borderWidth: 1 }]}>
+        <Heart size={40} color={theme.accentRoseSoft} fill={theme.accentRoseSoft} />
       </View>
-      <Text style={[styles.emptyTitle, { color: theme.text }]}>Start your story on Luvv ❤️</Text>
-      <Text style={[styles.emptySubtitle, { color: theme.textLight }]}>Every message is a memory in the making.</Text>
+      <Text style={[styles.emptyTitle, { color: theme.textPrimary }]}>Start your story ❤️</Text>
+      <Text style={[styles.emptySubtitle, { color: theme.textSecondary }]}>Every message is a memory in the making.</Text>
     </View>
   );
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.bgPrimary }]}>
       <Header 
         title={partnerName} 
         showBack 
@@ -213,7 +213,7 @@ export const ChatScreen = () => {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={0}
       >
-        <View style={[styles.inputArea, { backgroundColor: theme.surface, borderTopColor: theme.border }]}>
+        <View style={[styles.inputArea, { backgroundColor: theme.bgSurface, borderTopColor: theme.borderDefault }]}>
           <View style={styles.inputRow}>
             <TouchableOpacity 
               style={styles.actionButton} 
@@ -221,32 +221,32 @@ export const ChatScreen = () => {
               activeOpacity={0.7}
               hitSlop={{ top: 25, bottom: 25, left: 20, right: 20 }}
             >
-              <Plus color={theme.textLight} size={24} />
+              <Plus color={theme.textTertiary} size={24} />
             </TouchableOpacity>
             
-            <View style={[styles.inputFieldWrapper, { backgroundColor: theme.background, borderColor: theme.border }]}>
+            <View style={[styles.inputFieldWrapper, { backgroundColor: theme.bgElevated, borderColor: theme.borderDefault }]}>
               <TextInput
-                style={[styles.input, { color: theme.text }]}
+                style={[styles.input, { color: theme.textPrimary }]}
                 placeholder="Write something sweet..."
                 value={message}
                 onChangeText={setMessage}
                 multiline
-                placeholderTextColor={theme.textLight + '90'}
+                placeholderTextColor={theme.textTertiary}
               />
               <TouchableOpacity 
                 style={styles.innerIconButton}
                 onPress={handlePickMedia}
                 hitSlop={{ top: 25, bottom: 25, left: 20, right: 15 }}
               >
-                <ImageIcon color={theme.textLight} size={20} />
+                <ImageIcon color={theme.textTertiary} size={20} />
               </TouchableOpacity>
             </View>
 
             <TouchableOpacity 
               style={[
                 styles.sendButton, 
-                { backgroundColor: theme.primary },
-                !message.trim() && { backgroundColor: theme.primary + '50', elevation: 0, shadowOpacity: 0 }
+                { backgroundColor: theme.textPrimary },
+                !message.trim() && { backgroundColor: theme.borderStrong, elevation: 0, shadowOpacity: 0 }
               ]} 
               onPress={handleSend}
               disabled={!message.trim()}
@@ -254,7 +254,7 @@ export const ChatScreen = () => {
               hitSlop={{ top: 20, bottom: 20, left: 10, right: 25 }}
             >
               <View pointerEvents="none">
-                <Send color="white" size={20} />
+                <Send color={theme.bgPrimary} size={20} />
               </View>
             </TouchableOpacity>
           </View>
@@ -308,17 +308,17 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   emptyTitle: {
+    fontFamily: 'PlayfairDisplay_700Bold',
     fontSize: 22,
-    fontWeight: '900',
     marginBottom: 8,
     letterSpacing: -0.5,
   },
   emptySubtitle: {
+    fontFamily: 'DMSans_400Regular',
     fontSize: 15,
     textAlign: 'center',
     maxWidth: '70%',
     lineHeight: 22,
-    fontWeight: '600',
   },
   inputArea: {
     paddingHorizontal: 16,
@@ -348,10 +348,10 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
+    fontFamily: 'DMSans_400Regular',
     fontSize: 16,
     paddingVertical: 10,
     maxHeight: 120,
-    fontWeight: '600',
   },
   innerIconButton: {
     padding: 6,

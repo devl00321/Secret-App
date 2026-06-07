@@ -1,27 +1,28 @@
 {
   "expo": {
     "name": "Luvv",
-    "slug": "luvv-app",
+    "slug": "luvv-app-official",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/custom-icon.png",
     "scheme": "luvv",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
-    "splash": {
-      "image": "./assets/images/custom-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#FFFFFF"
-    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.ripu.loveapp",
       "buildNumber": "1",
       "googleServicesFile": "./GoogleService-Info.plist",
       "config": {
-        "googleMapsApiKey": "PASTE_YOUR_IOS_API_KEY_HERE"
+        "googleMapsApiKey": "AIzaSyAl5kUZYm2W2QfH0yBL_jskdXTiHHrKg3k"
       },
       "infoPlist": {
+        "CFBundleURLTypes": [
+          {
+            "CFBundleURLSchemes": [
+              "com.googleusercontent.apps.941648671576-e3s23g90a2v2ujqmte7difj2rs8eb3bb"
+            ]
+          }
+        ],
         "UIBackgroundModes": [
           "location",
           "fetch",
@@ -46,69 +47,21 @@
         "CAMERA",
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
-        "READ_CONTACTS"
+        "READ_CONTACTS",
+        "VIBRATE"
       ],
       "googleServicesFile": "./google-services.json",
       "config": {
         "googleMaps": {
-          "apiKey": "PASTE_YOUR_ANDROID_API_KEY_HERE"
+          "apiKey": "AIzaSyDBzJyB0cRA0db_qTfc_tNTq-3kYVpxIws"
         }
       },
-      "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
     },
     "web": {
       "output": "static",
       "favicon": "./assets/images/favicon.png"
     },
-    "plugins": [
-      "expo-router",
-      [
-        "expo-splash-screen",
-        {
-          "image": "./assets/images/splash-icon.png",
-          "imageWidth": 160,
-          "resizeMode": "contain",
-          "backgroundColor": "#FFFFFF",
-          "dark": {
-            "backgroundColor": "#FFFFFF"
-          }
-        }
-      ],
-      [
-        "expo-build-properties",
-        {
-          "ios": {
-            "deploymentTarget": "16.1"
-          },
-          "android": {
-            "ndkVersion": "26.1.10909125"
-          }
-        }
-      ],
-      [
-        "expo-location",
-        {
-          "locationAlwaysAndWhenInUsePermission": "Allow Love App to access your location always to keep you and your partner safe.",
-          "locationWhenInUsePermission": "Allow Love App to access your location while using the app.",
-          "locationAlwaysPermission": "Allow Love App to access your location always to keep you and your partner safe.",
-          "isAndroidBackgroundLocationEnabled": true
-        }
-      ],
-      [
-        "expo-local-authentication",
-        {
-          "faceIDPermission": "Allow Love App to use FaceID for secure map access."
-        }
-      ],
-      "@react-native-firebase/app",
-      "@react-native-firebase/auth",
-      "@react-native-firebase/messaging",
-      "react-native-quick-crypto",
-      "expo-secure-store",
-      "./hooks/withPodfileFix.js",
-      "./hooks/withNoPushEntitlement.js"
-    ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
@@ -116,7 +69,7 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "c182370f-c03f-48f9-af9e-14a5c5f9087e"
+        "projectId": "d0d0a610-86d8-4a8a-8acb-3e50cc1e44ae"
       }
     },
     "owner": "rikkhan111"

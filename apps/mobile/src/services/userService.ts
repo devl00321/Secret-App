@@ -47,12 +47,16 @@ export interface CoupleUpdateData {
 
 /**
  * Gets the active shared secret — prefers ECDH, falls back to legacy bridge.
+ * VUL-6 FIX: Removed hardcoded 'luvv_no_couple'. Callers that need pre-pairing
+ * encryption should use encryptionService.getPrePairingSecret() directly (async).
  */
 function getActiveSecret(coupleId: string | null): string {
   const { sharedSecret } = useAuthStore.getState();
   if (sharedSecret) return sharedSecret;
   if (coupleId) return encryptionService.getLegacySecret(coupleId);
-  return 'luvv_no_couple';
+  // Return the legacy sentinel — actual pre-pairing calls should use
+  // encryptionService.getPrePairingSecret() for real per-device key
+  return encryptionService.LEGACY_NO_COUPLE_SENTINEL;
 }
 
 // ─── Service ─────────────────────────────────────────────────────────────────
@@ -110,10 +114,20 @@ export const userService = {
       const data = userSnap.data() as PartnerProfile;
       if (!data) return null;
 
-      const { coupleId } = useAuthStore.getState();
-      const secret = getActiveSecret(coupleId);
+      const { coupleId, sharedSecret } = useAuthStore.getState();
       
-      return await encryptionService.decryptProfileFields(data, secret) as PartnerProfile;
+      // Attempt to load secret directly if store is empty (fixes race condition in RootLayout)
+      let secret = sharedSecret;
+      if (!secret && coupleId) {
+        secret = await encryptionService.loadSharedSecret(coupleId);
+      }
+      
+      // Final fallback to legacy
+      if (!secret) {
+        secret = getActiveSecret(coupleId);
+      }
+      
+      return await encryptionService.decryptProfileFields(data, secret, coupleId) as PartnerProfile;
     } catch (err) {
       console.warn('[UserService] Get data failed:', err);
       return null;
@@ -124,17 +138,27 @@ export const userService = {
    * Helper to decrypt a profile object using the active shared secret.
    */
   decryptProfile: async (data: any): Promise<PartnerProfile> => {
-    const { coupleId } = useAuthStore.getState();
-    const secret = getActiveSecret(coupleId);
+    const { coupleId, sharedSecret } = useAuthStore.getState();
+    
+    // Attempt to load secret directly if store is empty
+    let secret = sharedSecret;
+    if (!secret && coupleId) {
+      secret = await encryptionService.loadSharedSecret(coupleId);
+    }
+    
+    // Final fallback to legacy
+    if (!secret) {
+      secret = getActiveSecret(coupleId);
+    }
     
     try {
-      return await encryptionService.decryptProfileFields(data, secret) as PartnerProfile;
+      return await encryptionService.decryptProfileFields(data, secret, coupleId) as PartnerProfile;
     } catch (e) {
       // If primary decryption fails, try the legacy secret explicitly
       const legacySecret = encryptionService.getLegacySecret(coupleId || '');
       if (secret !== legacySecret) {
         try {
-          return await encryptionService.decryptProfileFields(data, legacySecret) as PartnerProfile;
+          return await encryptionService.decryptProfileFields(data, legacySecret, coupleId) as PartnerProfile;
         } catch (e2) {}
       }
       return data as PartnerProfile;
@@ -265,6 +289,6 @@ export const userService = {
   },
 
   // Exposed for components that need to decrypt profile data received from Firestore
-  decryptProfileFields: (data: any, secret: string) => encryptionService.decryptProfileFields(data, secret),
+  decryptProfileFields: (data: any, secret: string, coupleId?: string | null) => encryptionService.decryptProfileFields(data, secret, coupleId),
   encryptProfileFields: (data: any, secret: string) => encryptionService.encryptProfileFields(data, secret),
 };

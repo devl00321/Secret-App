@@ -59,13 +59,21 @@ export const useAuthStore = create<AuthState>()(
       subscribeToPartner: (partnerId) => {
         if (!partnerId) return () => {};
 
-        const unsubscribe = onSnapshot(doc(db, 'users', partnerId), (snapshot) => {
+        const unsubscribe = onSnapshot(doc(db, 'users', partnerId), async (snapshot) => {
           if (snapshot.exists()) {
             const data = snapshot.data() as PartnerProfile;
+            const secret = get().sharedSecret;
+            
+            const state = get();
+            let processedData = data;
+            if (state.sharedSecret) {
+              processedData = await encryptionService.decryptProfileFields(data, state.sharedSecret, state.coupleId);
+            }
+
             set((state) => ({
               partner: {
                 ...state.partner,
-                ...data,
+                ...processedData,
                 id: partnerId,
                 isOnline: Boolean(data.isOnline),
                 lastMessage: state.partner?.lastMessage || 'Click to start chatting! ❤️',
@@ -87,6 +95,7 @@ export const useAuthStore = create<AuthState>()(
        * Called once on app startup after the user is authenticated.
        */
       loadSharedSecret: async (coupleId: string) => {
+        console.log('[AuthStore] 🔑 Attempting to load shared secret for:', coupleId);
         try {
           // Try the proper ECDH secret first
           const ecdhSecret = await encryptionService.loadSharedSecret(coupleId);
@@ -94,14 +103,16 @@ export const useAuthStore = create<AuthState>()(
             set({ sharedSecret: ecdhSecret });
             console.log('[AuthStore] ✅ ECDH shared secret loaded from SecureStore.');
             
-            const { currentUserProfile, partner, coupleId } = get();
+            const { currentUserProfile, partner } = get();
             if (currentUserProfile) {
-              const decrypted = await encryptionService.decryptProfileFields(currentUserProfile, ecdhSecret);
+              const decrypted = await encryptionService.decryptProfileFields(currentUserProfile, ecdhSecret, coupleId);
               set({ currentUserProfile: decrypted });
+              console.log('[AuthStore] 👤 Decrypted current user profile.');
             }
             if (partner) {
-              const decrypted = await encryptionService.decryptProfileFields(partner, ecdhSecret);
+              const decrypted = await encryptionService.decryptProfileFields(partner, ecdhSecret, coupleId);
               set({ partner: decrypted });
+              console.log('[AuthStore] 💖 Decrypted partner profile.');
             }
 
             return;
@@ -115,15 +126,15 @@ export const useAuthStore = create<AuthState>()(
           // Re-decrypt current profiles with the loaded secret
           const { currentUserProfile, partner } = get();
           if (currentUserProfile) {
-            const decrypted = await encryptionService.decryptProfileFields(currentUserProfile, legacySecret);
+            const decrypted = await encryptionService.decryptProfileFields(currentUserProfile, legacySecret, coupleId);
             set({ currentUserProfile: decrypted });
           }
           if (partner) {
-            const decrypted = await encryptionService.decryptProfileFields(partner, legacySecret);
+            const decrypted = await encryptionService.decryptProfileFields(partner, legacySecret, coupleId);
             set({ partner: decrypted });
           }
         } catch (err) {
-          console.error('[AuthStore] loadSharedSecret failed:', err);
+          console.error('[AuthStore] ❌ loadSharedSecret failed:', err);
           // Always have a fallback
           const legacySecret = encryptionService.getLegacySecret(coupleId);
           set({ sharedSecret: legacySecret });

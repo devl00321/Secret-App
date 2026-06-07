@@ -40,6 +40,7 @@ export const pairingService = {
         setDoc(codeRef, {
           code,
           createdBy: userId,
+          creatorPublicKey: publicKey,
           createdAt: serverTimestamp(),
           expiresAt: FirestoreTimestamp.fromDate(expiryDate),
           isUsed: false,
@@ -71,74 +72,87 @@ export const pairingService = {
     const userRef = doc(db, 'users', currentUserId);
     await setDoc(userRef, { publicKey: myPublicKey }, { merge: true });
 
-    const result = await runTransaction(db, async (transaction) => {
-      const codeRef = doc(db, 'inviteCodes', normalizedCode);
-      const codeSnap = await transaction.get(codeRef);
+    let result: { coupleId: string; partnerId: string; partnerPublicKey?: string };
+    try {
+      result = await runTransaction(db, async (transaction) => {
+        const codeRef = doc(db, 'inviteCodes', normalizedCode);
+        const codeSnap = await transaction.get(codeRef);
 
-      if (!codeSnap.exists) {
-        throw new Error('Invalid code. Please check and try again.');
-      }
+        if (!codeSnap.exists) {
+          throw new Error('Invalid code. Please check and try again.');
+        }
 
-      const data = codeSnap.data() as any;
-      const now = new Date();
+        const data = codeSnap.data() as any;
+        const now = new Date();
 
-      if (data.isUsed) {
-        throw new Error('This code has already been used.');
-      }
+        if (data.isUsed) {
+          throw new Error('This code has already been used.');
+        }
 
-      if (data.expiresAt.toDate() < now) {
-        throw new Error('This code has expired.');
-      }
+        if (data.expiresAt.toDate() < now) {
+          throw new Error('This code has expired.');
+        }
 
-      if (data.createdBy === currentUserId) {
-        throw new Error('You cannot join your own code.');
-      }
+        if (data.createdBy === currentUserId) {
+          throw new Error('You cannot join your own code.');
+        }
 
-      const currentUserRef = doc(db, 'users', currentUserId);
-      const creatorUserRef = doc(db, 'users', data.createdBy);
-      const currentUserSnap = await transaction.get(currentUserRef);
-      const creatorUserSnap = await transaction.get(creatorUserRef);
+        const currentUserRef = doc(db, 'users', currentUserId);
+        const creatorUserRef = doc(db, 'users', data.createdBy);
+        const currentUserSnap = await transaction.get(currentUserRef);
+        // We do NOT read creatorUserRef to avoid permission-denied errors (VUL-3 fix restriction)
+        // If the creator is already paired, the transaction.set below will fail due to security rules.
 
-      if (!currentUserSnap.exists || !creatorUserSnap.exists) {
-        throw new Error('We could not find both user profiles. Please try again.');
-      }
+        if (!currentUserSnap.exists) {
+          throw new Error('We could not find your user profile. Please try again.');
+        }
 
-      if (currentUserSnap.data()?.coupleId || creatorUserSnap.data()?.coupleId) {
-        throw new Error('One of these accounts is already paired.');
-      }
+        if (currentUserSnap.data()?.coupleId) {
+          throw new Error('Your account is already paired.');
+        }
 
-      const coupleId = [data.createdBy, currentUserId].sort().join('_');
-      const coupleRef = doc(db, 'couples', coupleId);
+        const rawCoupleId = [data.createdBy, currentUserId].sort().join('_');
+        // Create an anonymous "Couple Fingerprint" instead of using raw UIDs
+        const coupleId = await Crypto.digestStringAsync(
+          Crypto.CryptoDigestAlgorithm.SHA256,
+          rawCoupleId
+        );
+        const coupleRef = doc(db, 'couples', coupleId);
 
-      // Capture the partner's public key BEFORE transaction ends
-      const partnerPublicKey: string | undefined = creatorUserSnap.data()?.publicKey;
+        // Capture the partner's public key from the invite code instead
+        const partnerPublicKey: string | undefined = data.creatorPublicKey;
 
-      transaction.set(coupleRef, {
-        id: coupleId,
-        users: [data.createdBy, currentUserId],
-        createdAt: serverTimestamp(),
+        transaction.set(coupleRef, {
+          users: [data.createdBy, currentUserId],
+          createdAt: serverTimestamp(),
+        });
+
+        transaction.set(
+          currentUserRef,
+          { partnerId: data.createdBy, coupleId },
+          { merge: true }
+        );
+
+        transaction.set(
+          creatorUserRef,
+          { partnerId: currentUserId, coupleId },
+          { merge: true }
+        );
+
+        transaction.set(
+          codeRef,
+          { isUsed: true, usedBy: currentUserId, usedAt: serverTimestamp() },
+          { merge: true }
+        );
+
+        return { coupleId, partnerId: data.createdBy, partnerPublicKey };
       });
-
-      transaction.set(
-        currentUserRef,
-        { partnerId: data.createdBy, coupleId },
-        { merge: true }
-      );
-
-      transaction.set(
-        creatorUserRef,
-        { partnerId: currentUserId, coupleId },
-        { merge: true }
-      );
-
-      transaction.set(
-        codeRef,
-        { isUsed: true, usedBy: currentUserId, usedAt: serverTimestamp() },
-        { merge: true }
-      );
-
-      return { coupleId, partnerId: data.createdBy, partnerPublicKey };
-    });
+    } catch (err: any) {
+      if (err.code === 'permission-denied' || (err.message && err.message.includes('permission'))) {
+        throw new Error('Could not pair. The code might be invalid, or one of the accounts is already paired.');
+      }
+      throw err;
+    }
 
     // ── Phase 2: Derive and store shared secret (outside transaction) ──
     if (result.partnerPublicKey) {
@@ -164,9 +178,12 @@ export const pairingService = {
 
     // ── Log to Timeline ──
     import('./activityService').then(({ activityService }) => {
-      activityService.logActivity('anniversary', 'We started our journey together! ❤️', {
-        isPairingEvent: true,
-      });
+      activityService.logActivity(
+        'anniversary', 
+        'We started our journey together! ❤️', 
+        { isPairingEvent: true },
+        result.coupleId
+      );
     });
 
     return { coupleId: result.coupleId, partnerId: result.partnerId };

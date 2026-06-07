@@ -71,7 +71,7 @@ export const NavigationOverlay = ({
     <View style={styles.container} pointerEvents="box-none">
       {/* Top Instruction Card */}
       <View style={styles.topContainer}>
-        <View style={[styles.instructionCard, { backgroundColor: theme.primary }]}>
+        <View style={[styles.instructionCard, { backgroundColor: theme.accentRose }]}>
           <View style={styles.instructionMain}>
             <View style={styles.maneuverContainer}>
               {currentStep ? getStepIcon(currentStep.html_instructions) : <Navigation2 size={38} color="white" />}
@@ -84,8 +84,8 @@ export const NavigationOverlay = ({
               <Text style={styles.instructionText} numberOfLines={2}>
                 {currentStep ? stripHtml(currentStep.html_instructions) : `Navigating to ${partnerName}`}
               </Text>
-              <View style={[styles.roadBadge, { backgroundColor: theme.surface }]}>
-                <Text style={[styles.roadBadgeText, { color: theme.primary }]}>LUVV</Text>
+              <View style={[styles.roadBadge, { backgroundColor: theme.bgSurface }]}>
+                <Text style={[styles.roadBadgeText, { color: theme.accentRose }]}>LUVV</Text>
               </View>
             </View>
 
@@ -102,45 +102,45 @@ export const NavigationOverlay = ({
       {/* Middle Floating Buttons */}
       <View style={styles.middleLeftControls}>
         <TouchableOpacity 
-          style={[styles.floatingActionBtn, { backgroundColor: theme.surface }]}
+          style={[styles.floatingActionBtn, { backgroundColor: theme.bgSurface }]}
           onPress={onRecenter}
         >
-          <RotateCw size={22} color={theme.primary} />
-          <Text style={[styles.floatingActionText, { color: theme.text }]}>Re-centre</Text>
+          <RotateCw size={22} color={theme.accentRose} />
+          <Text style={[styles.floatingActionText, { color: theme.textPrimary }]}>Re-centre</Text>
         </TouchableOpacity>
 
         <TouchableOpacity 
-          style={[styles.floatingActionBtn, { backgroundColor: theme.surface, marginTop: 12 }]}
+          style={[styles.floatingActionBtn, { backgroundColor: theme.bgSurface, marginTop: 12 }]}
           onPress={onCenterPartner}
         >
-          <MapPin size={22} color={theme.secondary || '#FF6B6B'} />
-          <Text style={[styles.floatingActionText, { color: theme.text }]}>{partnerName}</Text>
+          <MapPin size={22} color={'#8B7CFF'} />
+          <Text style={[styles.floatingActionText, { color: theme.textPrimary }]}>{partnerName}</Text>
         </TouchableOpacity>
       </View>
 
       {/* Bottom Stats Card */}
       <View style={styles.bottomContainer}>
-        <View style={[styles.statsCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+        <View style={[styles.statsCard, { backgroundColor: theme.bgSurface, borderColor: theme.borderDefault }]}>
           <View style={styles.statsLeft}>
-            <TouchableOpacity style={[styles.routeOverviewBtn, { backgroundColor: theme.border + '30' }]}>
-              <MapIcon size={24} color={theme.text} />
+            <TouchableOpacity style={[styles.routeOverviewBtn, { backgroundColor: theme.borderDefault + '30' }]}>
+              <MapIcon size={24} color={theme.textPrimary} />
             </TouchableOpacity>
           </View>
 
           <View style={styles.statsCenter}>
             <View style={styles.etaRow}>
-              <Text style={[styles.etaValue, { color: theme.primary }]}>{eta ? Math.round(eta) : '--'}</Text>
-              <Text style={[styles.etaUnit, { color: theme.primary }]}> min</Text>
-              <Text style={[styles.arrivalTime, { color: theme.textLight }]}> • {formatEta(eta)}</Text>
+              <Text style={[styles.etaValue, { color: theme.accentRose }]}>{eta ? Math.round(eta) : '--'}</Text>
+              <Text style={[styles.etaUnit, { color: theme.accentRose }]}> min</Text>
+              <Text style={[styles.arrivalTime, { color: theme.textSecondary }]}> • {formatEta(eta)}</Text>
             </View>
-            <Text style={[styles.totalDistance, { color: theme.textLight }]}>
+            <Text style={[styles.totalDistance, { color: theme.textSecondary }]}>
               {distance ? (distance < 1 ? `${Math.round(distance * 1000)} m` : `${distance.toFixed(1)} km`) : '--'}
             </Text>
           </View>
 
           <View style={styles.statsRight}>
             <TouchableOpacity 
-              style={[styles.exitButton, { backgroundColor: theme.border + '50' }]} 
+              style={[styles.exitButton, { backgroundColor: theme.borderDefault + '50' }]} 
               onPress={onClose}
             >
               <Text style={[styles.exitButtonText, { color: '#FF3B30' }]}>Exit</Text>
@@ -156,7 +156,7 @@ const styles = StyleSheet.create({
   container: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'space-between',
-    paddingBottom: 110,
+    paddingBottom: Platform.OS === 'ios' ? 150 : 130, // Lifted to clear tab bar
     zIndex: 1000,
   },
   topContainer: {
@@ -218,7 +218,7 @@ const styles = StyleSheet.create({
   },
   middleLeftControls: {
     position: 'absolute',
-    bottom: 200,
+    bottom: Platform.OS === 'ios' ? 240 : 220, // Moved up to avoid overlap
     left: 20,
   },
   floatingActionBtn: {

@@ -30,7 +30,7 @@ export default function EmailLoginScreen() {
       // while still keeping visibility in the console logs.
       console.warn('Auth Error Details:', error.code, error.message);
       
-      let friendlyMessage = 'An error occurred during authentication';
+      let friendlyMessage = `An error occurred during authentication (${error.code || 'unknown'})`;
       
       if (error.code === 'auth/invalid-credential') {
         friendlyMessage = isLogin 

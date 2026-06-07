@@ -54,19 +54,53 @@ export const notificationService = {
           authStatus === messaging.AuthorizationStatus.PROVISIONAL;
 
         if (enabled) {
-          console.log('[NotificationService] FCM Authorization status:', authStatus);
+          // VUL-9 FIX: Only log auth status in dev — not a secret, but good hygiene
+          if (__DEV__) console.log('[NotificationService] FCM Authorization status:', authStatus);
           
           // Get the token
           const fcmToken = await messagingInstance.getToken();
           if (fcmToken) {
-            console.log('[NotificationService] FCM Token:', fcmToken);
+            // VUL-9 FIX: FCM tokens are sensitive — never log in production
+            if (__DEV__) console.log('[NotificationService] FCM Token obtained (dev only)');
             await notificationService.saveTokenToFirestore(fcmToken);
           }
 
           // Listen to whether the token changes
           onTokenRefresh(messagingInstance, async (token) => {
-            console.log('[NotificationService] FCM Token refreshed:', token);
+            if (__DEV__) console.log('[NotificationService] FCM Token refreshed (dev only)');
             await notificationService.saveTokenToFirestore(token);
+          });
+
+          // Listen for foreground messages
+          messagingInstance.onMessage(async (remoteMessage) => {
+            if (remoteMessage.data?.type === 'geofence') {
+              try {
+                const { event, placeNameEnc, partnerName } = remoteMessage.data;
+                const { useAuthStore } = require('../../store/useAuthStore');
+                const { encryptionService } = require('../encryptionService');
+                
+                const store = useAuthStore.getState();
+                let secret = store.sharedSecret;
+                if (!secret && store.coupleId) secret = encryptionService.getLegacySecret(store.coupleId);
+                if (!secret) secret = encryptionService.LEGACY_NO_COUPLE_SENTINEL;
+
+                let placeName = "a saved place";
+                if (placeNameEnc) {
+                  placeName = await encryptionService.decryptObject(placeNameEnc, secret) || "a saved place";
+                }
+
+                const actionText = event === 'arrival' ? 'arrived at' : 'left';
+                const title = event === 'arrival' ? '🏡 Safely Arrived!' : '🚗 On the Move!';
+                const msg = `Your ${partnerName || 'partner'} has ${actionText} ${placeName}.`;
+                
+                const { alertService } = require('../alertService');
+                alertService.triggerAlert('info', title, msg);
+                
+                await notificationService.sendLocalNotification(title, msg);
+              } catch (e) {
+                console.warn('[Foreground FCM] Failed to handle geofence message:', e);
+              }
+            }
           });
         }
       } catch (e) {

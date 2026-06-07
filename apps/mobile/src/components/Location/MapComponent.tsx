@@ -30,7 +30,7 @@ interface MapComponentProps {
   distanceToPartner: number | null;
   etaToPartner: number | null;
   isSelectingLocation?: boolean;
-  onRegionChangeComplete?: (region: any) => void;
+  onRegionChangeComplete?: (region: any, gesture?: any) => void;
   onMarkerPress?: () => void;
   partnerName?: string;
   myColor?: string;
@@ -57,6 +57,24 @@ const getPlaceIcon = (type: string, color: string) => {
     case 'gym': return <Dumbbell size={size} color={color} />;
     default: return <MapPin size={size} color={color} />;
   }
+};
+
+const hexToRgba = (hex: string, alpha: number) => {
+  if (!hex || typeof hex !== 'string') return hex;
+  const cleanHex = hex.replace('#', '');
+  let r = 0, g = 0, b = 0;
+  if (cleanHex.length === 3) {
+    r = parseInt(cleanHex[0] + cleanHex[0], 16);
+    g = parseInt(cleanHex[1] + cleanHex[1], 16);
+    b = parseInt(cleanHex[2] + cleanHex[2], 16);
+  } else if (cleanHex.length === 6) {
+    r = parseInt(cleanHex.substring(0, 2), 16);
+    g = parseInt(cleanHex.substring(2, 4), 16);
+    b = parseInt(cleanHex.substring(4, 6), 16);
+  } else {
+    return hex;
+  }
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 };
 
 export const MapComponent = React.memo(({
@@ -88,16 +106,7 @@ export const MapComponent = React.memo(({
   autoFollow = true,
   setAutoFollow
 }: MapComponentProps) => {
-  const [shouldTrack, setShouldTrack] = React.useState(true);
 
-  React.useEffect(() => {
-    if (Platform.OS === 'android') {
-      const timer = setTimeout(() => setShouldTrack(false), 4000);
-      return () => clearTimeout(timer);
-    } else {
-      setShouldTrack(false);
-    }
-  }, []);
 
   // Helper to safely get coordinates from flattened or nested userLocation
   const getCoords = (loc: any) => {
@@ -150,11 +159,12 @@ export const MapComponent = React.memo(({
       setAutoFollow(false);
     }
     if (onRegionChangeComplete) {
-      onRegionChangeComplete(region);
+      onRegionChangeComplete(region, gesture);
     }
   };
 
-  const validSavedPlaces = savedPlaces?.filter(p => p && p.latitude && p.longitude) || [];
+  const validSavedPlaces = (savedPlaces?.filter(p => p && p.latitude && p.longitude) || [])
+    .filter((place, index, self) => index === self.findIndex((t) => t.id === place.id));
 
   return (
     <View style={styles.flex}>
@@ -184,8 +194,8 @@ export const MapComponent = React.memo(({
               longitude: Number(place.longitude),
             }}
             radius={Number(place.radius || 200)}
-            strokeColor={(place.color || (place.isPartner ? theme.secondary : theme.primary)) + '80'}
-            fillColor={(place.color || (place.isPartner ? theme.secondary : theme.primary)) + '20'}
+            strokeColor={hexToRgba(place.color || (place.isPartner ? '#8B7CFF' : theme.accentRose), 0.5)}
+            fillColor={hexToRgba(place.color || (place.isPartner ? '#8B7CFF' : theme.accentRose), 0.12)}
             zIndex={1}
             strokeWidth={1}
           />
@@ -194,19 +204,26 @@ export const MapComponent = React.memo(({
         {/* Only render markers if coordinates are valid to prevent Native Crashes */}
         {userCoords && userCoords.latitude && (
           <Marker
-            key={`me-${shouldTrack ? 'tracking' : 'static'}`}
+            key="me-marker"
+            tracksViewChanges={false}
             coordinate={userCoords}
             title="Me"
-            tracksViewChanges={shouldTrack}
-            anchor={{ x: 0.5, y: 0.5 }}
+            anchor={{ x: 0.5, y: 1 }}
+            centerOffset={isNavigating ? { x: 0, y: 0 } : { x: -20, y: -42 }}
             zIndex={100}
-            rotation={userLocation?.coords?.heading || 0}
+            rotation={isNavigating ? (userLocation?.coords?.heading || 0) : 0}
             flat={isNavigating} // Makes it tilt with the map in 3D
           >
             {isNavigating ? (
               <View style={styles.navArrowContainer}>
-                <View style={[styles.navArrowMain, { borderBottomColor: theme.primary }]} />
-                <View style={styles.navArrowShadow} />
+                {/* Outer Glow/Shadow */}
+                <View style={styles.navArrowHalo} />
+                {/* Main Arrow Body */}
+                <View style={[styles.navArrowMain, { borderBottomColor: theme.accentRose }]}>
+                  <View style={styles.navArrowInner} />
+                </View>
+                {/* Stylized tip to make it look less like a plain triangle */}
+                <View style={[styles.navArrowTip, { borderBottomColor: 'white' }]} />
               </View>
             ) : (
               <HeartMarker type="me" initial={user?.displayName?.[0] || 'M'} color={myColor} />
@@ -216,11 +233,12 @@ export const MapComponent = React.memo(({
 
         {partnerCoords && partnerCoords.latitude && (
           <Marker
-            key={`partner-${shouldTrack ? 'tracking' : 'static'}`}
+            key="partner-marker"
+            tracksViewChanges={false}
             coordinate={partnerCoords}
             title="Partner"
-            tracksViewChanges={shouldTrack}
             anchor={{ x: 0.5, y: 1 }}
+            centerOffset={{ x: -20, y: -42 }}
             onPress={onMarkerPress}
             zIndex={10}
           >
@@ -237,9 +255,11 @@ export const MapComponent = React.memo(({
         {lastCompletedPath && lastCompletedPath.length > 1 && (
           <Polyline
             coordinates={lastCompletedPath}
-            strokeColor="#D4AF37" // Metallic Gold
-            strokeWidth={5}
-            lineDashPattern={[2, 12]} // Breadcrumb effect
+            strokeColor="#D4AF37AA" // Metallic Gold with alpha
+            strokeWidth={3}
+            lineDashPattern={[2, 10]} 
+            lineCap="round"
+            lineJoin="round"
             geodesic={true}
             zIndex={2}
           />
@@ -249,9 +269,11 @@ export const MapComponent = React.memo(({
         {partnerLastCompletedPath && partnerLastCompletedPath.length > 1 && (
           <Polyline
             coordinates={partnerLastCompletedPath}
-            strokeColor="#D4AF37" // Metallic Gold
-            strokeWidth={5}
-            lineDashPattern={[2, 12]} // Breadcrumb effect
+            strokeColor="#D4AF37AA" // Metallic Gold with alpha
+            strokeWidth={3}
+            lineDashPattern={[2, 10]} 
+            lineCap="round"
+            lineJoin="round"
             geodesic={true}
             zIndex={2}
           />
@@ -264,7 +286,7 @@ export const MapComponent = React.memo(({
             <Circle
               center={walkSafePath[0]}
               radius={10}
-              fillColor={myColor || theme.primary}
+              fillColor={myColor || theme.accentRose}
               strokeColor="white"
               strokeWidth={2}
               zIndex={4}
@@ -272,8 +294,10 @@ export const MapComponent = React.memo(({
             {walkSafePath.length > 1 && (
               <Polyline
                 coordinates={walkSafePath}
-                strokeColor={myColor || theme.primary}
-                strokeWidth={6}
+                strokeColor={(myColor || theme.accentRose) + 'AA'}
+                strokeWidth={4}
+                lineCap="round"
+                lineJoin="round"
                 geodesic={true}
                 zIndex={3}
               />
@@ -287,7 +311,7 @@ export const MapComponent = React.memo(({
             <Circle
               center={partnerWalkSafePath[0]}
               radius={10}
-              fillColor={partnerColor || theme.secondary}
+              fillColor={partnerColor || '#8B7CFF'}
               strokeColor="white"
               strokeWidth={2}
               zIndex={4}
@@ -295,8 +319,10 @@ export const MapComponent = React.memo(({
             {partnerWalkSafePath.length > 1 && (
               <Polyline
                 coordinates={partnerWalkSafePath}
-                strokeColor={partnerColor || theme.secondary}
-                strokeWidth={6}
+                strokeColor={(partnerColor || '#8B7CFF') + 'AA'}
+                strokeWidth={4}
+                lineCap="round"
+                lineJoin="round"
                 geodesic={true}
                 zIndex={3}
               />
@@ -309,10 +335,13 @@ export const MapComponent = React.memo(({
             origin={userCoords}
             destination={partnerCoords}
             apikey={GOOGLE_MAPS_APIKEY}
-            strokeWidth={8}
-            strokeColor={theme.primary}
-            lineDashPattern={[0]}
+            strokeWidth={4}
+            strokeColor={theme.accentRose + 'CC'}
+            mode={(distanceToPartner || 0) > 2 ? "DRIVING" : "WALKING"}
             precision="high"
+            optimizeWaypoints={true}
+            lineCap="round"
+            lineJoin="round"
             onReady={result => {
               const distDiff = Math.abs((distanceToPartner || 0) - result.distance);
               const etaDiff = Math.abs((etaToPartner || 0) - result.duration);
@@ -337,10 +366,11 @@ export const MapComponent = React.memo(({
             origin={userCoords}
             destination={{ latitude: destination.latitude, longitude: destination.longitude }}
             apikey={GOOGLE_MAPS_APIKEY}
-            strokeWidth={5}
-            strokeColor={myColor || theme.primary}
+            strokeWidth={3}
+            strokeColor={(myColor || theme.accentRose) + 'CC'}
             mode="WALKING"
-            optimizeWaypoints={true}
+            lineCap="round"
+            lineJoin="round"
             precision="high"
           />
         )}
@@ -349,11 +379,13 @@ export const MapComponent = React.memo(({
         {partnerCoords && partnerWalkSafePath && GOOGLE_MAPS_APIKEY && GOOGLE_MAPS_APIKEY !== 'YOUR_GOOGLE_MAPS_API_KEY_HERE' && (
           <MapViewDirections
             origin={partnerCoords}
-            destination={partnerWalkSafePath[partnerWalkSafePath.length - 1]} // Assuming end of path is destination or we can pass destination directly if available
+            destination={partnerWalkSafePath[partnerWalkSafePath.length - 1]} 
             apikey={GOOGLE_MAPS_APIKEY}
-            strokeWidth={5}
-            strokeColor={partnerColor || theme.secondary}
+            strokeWidth={3}
+            strokeColor={(partnerColor || '#8B7CFF') + 'CC'}
             mode="WALKING"
+            lineCap="round"
+            lineJoin="round"
             precision="high"
           />
         )}
@@ -361,23 +393,24 @@ export const MapComponent = React.memo(({
         {/* PASS 2: Place Markers (Top layer) */}
         {validSavedPlaces.map((place) => (
           <Marker
-            key={`place-${place.id}-${shouldTrack ? 'tracking' : 'static'}`}
+            key={`place-${place.id}`}
+            tracksViewChanges={false}
             coordinate={{
               latitude: Number(place.latitude),
               longitude: Number(place.longitude),
             }}
             anchor={{ x: 0.5, y: 0.5 }}
-            tracksViewChanges={shouldTrack}
+            centerOffset={{ x: 0, y: 0 }}
             zIndex={20}
           >
             <View style={styles.placeMarker}>
-              <View style={[styles.placeTag, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-                <Text style={[styles.placeText, { color: theme.text }]} numberOfLines={1}>
+              <View style={[styles.placeTag, { backgroundColor: theme.bgSurface, borderColor: theme.borderDefault }]}>
+                <Text style={[styles.placeText, { color: theme.textPrimary }]} numberOfLines={1}>
                   {place.name}
                 </Text>
               </View>
-              <View style={[styles.placeIcon, { backgroundColor: theme.surface, borderColor: place.color || (place.isPartner ? theme.secondary : theme.primary) }]}>
-                {getPlaceIcon(place.type, place.color || (place.isPartner ? theme.secondary : theme.primary))}
+              <View style={[styles.placeIcon, { backgroundColor: theme.bgSurface, borderColor: place.color || (place.isPartner ? '#8B7CFF' : theme.accentRose) }]}>
+                {getPlaceIcon(place.type, place.color || (place.isPartner ? '#8B7CFF' : theme.accentRose))}
               </View>
             </View>
           </Marker>
@@ -386,29 +419,32 @@ export const MapComponent = React.memo(({
 
       {isSelectingLocation && (
         <View style={styles.selectorContainer}>
-          <MapPin size={40} color={theme.primary} />
-          <View style={[styles.selectorDot, { backgroundColor: theme.primary }]} />
+          <MapPin size={40} color={theme.accentRose} />
+          <View style={[styles.selectorDot, { backgroundColor: theme.accentRose }]} />
         </View>
       )}
     </View>
   );
 });
+MapComponent.displayName = 'MapComponent';
+
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   placeMarker: { 
+    width: 40,
+    height: 40,
     alignItems: 'center',
-    width: 120, // Explicit width for Android stability
-    height: 80, // Explicit height for Android stability
-    justifyContent: 'flex-end',
+    justifyContent: 'center',
   },
   placeTag: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 12,
-    marginBottom: 4,
+    position: 'absolute',
+    bottom: 42, // Adjusted for the 40x40 container
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
     borderWidth: 1.5,
-    maxWidth: 120,
+    minWidth: 40,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
@@ -418,13 +454,16 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   placeText: { 
-    fontSize: 10, 
+    fontSize: 9, 
     fontWeight: '900', 
     textTransform: 'uppercase'
   },
   placeIcon: { 
-    padding: 6, 
-    borderRadius: 20, 
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 16, 
     borderWidth: 2, 
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -456,32 +495,58 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  navArrowHalo: {
+    position: 'absolute',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.4)',
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.8)',
+  },
   navArrowMain: {
     width: 0,
     height: 0,
     backgroundColor: 'transparent',
     borderStyle: 'solid',
-    borderLeftWidth: 12,
-    borderRightWidth: 12,
-    borderBottomWidth: 30,
+    borderLeftWidth: 10,
+    borderRightWidth: 10,
+    borderBottomWidth: 26,
     borderLeftColor: 'transparent',
     borderRightColor: 'transparent',
-    transform: [{ scaleY: 1.2 }],
+    transform: [{ scaleY: 1.4 }],
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
   },
-  navArrowShadow: {
+  navArrowInner: {
     position: 'absolute',
+    top: 2,
+    left: -8,
     width: 0,
     height: 0,
     backgroundColor: 'transparent',
     borderStyle: 'solid',
-    borderLeftWidth: 14,
-    borderRightWidth: 14,
-    borderBottomWidth: 34,
+    borderLeftWidth: 8,
+    borderRightWidth: 8,
+    borderBottomWidth: 22,
     borderLeftColor: 'transparent',
     borderRightColor: 'transparent',
-    borderBottomColor: 'rgba(0,0,0,0.2)',
-    zIndex: -1,
-    top: 2,
-    transform: [{ scaleY: 1.2 }],
-  }
+    borderBottomColor: 'rgba(255,255,255,0.3)',
+  },
+  navArrowTip: {
+    position: 'absolute',
+    bottom: 12,
+    width: 0,
+    height: 0,
+    backgroundColor: 'transparent',
+    borderStyle: 'solid',
+    borderLeftWidth: 3,
+    borderRightWidth: 3,
+    borderBottomWidth: 6,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    transform: [{ rotate: '180deg' }],
+  },
 });

@@ -136,16 +136,16 @@ export const MessageContextMenu = ({
             >
                {isMe ? (
                 <LinearGradient
-                  colors={[theme.primary, theme.primary + 'DD']}
+                  colors={[theme.accentRose, theme.accentRose + 'DD']}
                   style={[styles.bubble, { borderBottomRightRadius: 4, borderRadius: 20 }]}
                 >
                   {imageUrl && <Image source={{ uri: imageUrl }} style={styles.bubbleImage} />}
                   {messageText ? <Text style={styles.bubbleTextMe}>{messageText}</Text> : null}
                 </LinearGradient>
               ) : (
-                <View style={[styles.bubble, { backgroundColor: theme.bubblePartner, borderBottomLeftRadius: 4, borderRadius: 20 }]}>
+                <View style={[styles.bubble, { backgroundColor: theme.bgSurface, borderBottomLeftRadius: 4, borderRadius: 20 }]}>
                   {imageUrl && <Image source={{ uri: imageUrl }} style={styles.bubbleImage} />}
-                  {messageText ? <Text style={[styles.bubbleTextPartner, { color: theme.text }]}>{messageText}</Text> : null}
+                  {messageText ? <Text style={[styles.bubbleTextPartner, { color: theme.textPrimary }]}>{messageText}</Text> : null}
                 </View>
               )}
             </Animated.View>
@@ -159,8 +159,12 @@ export const MessageContextMenu = ({
                   top: y - reactionsHeight - 10,
                   left: isMe ? undefined : Math.max(10, x),
                   right: isMe ? Math.max(10, SCREEN_WIDTH - (x + width)) : undefined,
-                  backgroundColor: theme.surface,
-                  ...theme.shadows.medium
+                  backgroundColor: theme.bgSurface,
+                  shadowColor: '#000',
+                  shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: 0.12,
+                  shadowRadius: 12,
+                  elevation: 8,
                 }
               ]}
             >
@@ -170,7 +174,7 @@ export const MessageContextMenu = ({
                 </TouchableOpacity>
               ))}
               <TouchableOpacity style={styles.emojiBtnMore} onPress={onClose}>
-                <Text style={[styles.emojiPlus, { color: theme.textLight }]}>+</Text>
+                <Text style={[styles.emojiPlus, { color: theme.textSecondary }]}>+</Text>
               </TouchableOpacity>
             </Animated.View>
 
@@ -182,21 +186,25 @@ export const MessageContextMenu = ({
                 { 
                   top: y + height + 8,
                   left: safeMenuX,
-                  backgroundColor: theme.surface,
-                  ...theme.shadows.premium
+                  backgroundColor: theme.bgSurface,
+                  shadowColor: '#000',
+                  shadowOffset: { width: 0, height: 8 },
+                  shadowOpacity: 0.18,
+                  shadowRadius: 24,
+                  elevation: 16,
                 }
               ]}
             >
-              <MenuAction icon={<Reply size={20} color={theme.text} />} label="Reply" onPress={() => { onReply?.(); onClose(); }} theme={theme} />
-              <MenuAction icon={<Copy size={20} color={theme.text} />} label="Copy" onPress={() => { onCopy(); onClose(); }} theme={theme} />
+              <MenuAction icon={<Reply size={20} color={theme.textPrimary} />} label="Reply" onPress={() => { onReply?.(); onClose(); }} theme={theme} />
+              <MenuAction icon={<Copy size={20} color={theme.textPrimary} />} label="Copy" onPress={() => { onCopy(); onClose(); }} theme={theme} />
               
               {isMe && (
-                <MenuAction icon={<Pencil size={20} color={theme.text} />} label="Edit" onPress={() => { onEdit?.(); onClose(); }} theme={theme} />
+                <MenuAction icon={<Pencil size={20} color={theme.textPrimary} />} label="Edit" onPress={() => { onEdit?.(); onClose(); }} theme={theme} />
               )}
               
-              <MenuAction icon={<Star size={20} color={theme.text} />} label="Star" onPress={onClose} theme={theme} />
+              <MenuAction icon={<Star size={20} color={theme.textPrimary} />} label="Star" onPress={onClose} theme={theme} />
               
-              <View style={[styles.divider, { backgroundColor: theme.border }]} />
+              <View style={[styles.divider, { backgroundColor: theme.borderDefault }]} />
               
               {canUnsend && (
                 <MenuAction 
@@ -226,7 +234,7 @@ export const MessageContextMenu = ({
 const MenuAction = ({ icon, label, onPress, theme, isDestructive }: any) => (
   <TouchableOpacity style={styles.menuItem} onPress={onPress}>
     <View style={styles.menuIconWrapper}>{icon}</View>
-    <Text style={[styles.menuItemText, { color: isDestructive ? '#FF3B30' : theme.text }]}>{label}</Text>
+    <Text style={[styles.menuItemText, { color: isDestructive ? '#FF3B30' : theme.textPrimary }]}>{label}</Text>
   </TouchableOpacity>
 );
 

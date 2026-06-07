@@ -11,12 +11,13 @@ export default function AppLayout() {
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const isAuthInProgress = useRef(false);
   const hasInitialCheckRun = useRef(false);
-  const lastUnlockTime = useRef(0);
+  const lastUnlockTime = useRef(Date.now());
+  const backgroundTimestamp = useRef<number | null>(null);
   const appState = useRef(AppState.currentState);
 
   const handleUnlock = async () => {
-    // Don't run if already authenticating or if lock is disabled
-    if (!biometricLockEnabled || isAuthInProgress.current) {
+    // Don't run if already authenticating, if lock is disabled, or if already unlocked
+    if (!biometricLockEnabled || isAuthInProgress.current || !isLocked) {
       return;
     }
 
@@ -29,16 +30,17 @@ export default function AppLayout() {
         setIsLocked(false);
         lastUnlockTime.current = Date.now();
       } else {
-        biometricService.showSecurityAlert();
+        // If they cancel/fail, we stay locked but don't immediately prompt again
+        // they can tap the "Unlock" button on the overlay
       }
     } catch (err) {
       console.error('[AppLock] Auth error:', err);
     } finally {
       setIsAuthenticating(false);
-      // Delay before allowing next auth
+      // Cooldown period after any auth attempt to prevent loops
       setTimeout(() => {
         isAuthInProgress.current = false;
-      }, 1000);
+      }, 2000);
     }
   };
 
@@ -53,21 +55,34 @@ export default function AppLayout() {
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextAppState) => {
-      const wasBackgrounded = appState.current.match(/inactive|background/);
+      const wasActive = appState.current === 'active';
       const isNowActive = nextAppState === 'active';
-      const timeSinceUnlock = Date.now() - lastUnlockTime.current;
+      const isNowBackground = nextAppState.match(/inactive|background/);
 
-      // Only trigger lock if we are coming BACK to the app 
-      // AND it's been more than 3 seconds since the last unlock (prevents flickering loops)
-      if (
-        wasBackgrounded && 
-        isNowActive && 
-        biometricLockEnabled && 
-        !isAuthInProgress.current &&
-        timeSinceUnlock > 3000
-      ) {
-        setIsLocked(true);
-        handleUnlock();
+      if (isNowBackground && wasActive) {
+        backgroundTimestamp.current = Date.now();
+      }
+
+      if (isNowActive && backgroundTimestamp.current) {
+        const timeInBackground = Date.now() - backgroundTimestamp.current;
+        const timeSinceLastUnlock = Date.now() - lastUnlockTime.current;
+
+        // CRITICAL GUARD:
+        // Only re-lock if the app was in the background for more than 10 seconds.
+        // Biometric prompts usually make the app 'inactive' for 1-3 seconds.
+        // Also ensure we don't trigger if an auth is already being processed.
+        if (
+          biometricLockEnabled && 
+          timeInBackground > 10000 && 
+          timeSinceLastUnlock > 5000 &&
+          !isAuthInProgress.current
+        ) {
+          setIsLocked(true);
+          // Small delay before prompting to ensure UI has settled
+          setTimeout(handleUnlock, 500);
+        }
+        
+        backgroundTimestamp.current = null;
       }
       
       appState.current = nextAppState;
@@ -76,7 +91,7 @@ export default function AppLayout() {
     return () => {
       subscription.remove();
     };
-  }, [biometricLockEnabled]);
+  }, [biometricLockEnabled, isLocked]);
 
   return (
     <View style={{ flex: 1 }}>

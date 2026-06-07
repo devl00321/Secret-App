@@ -1,7 +1,4 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
-
-// Initialize the Gemini AI SDK
-const genAI = new GoogleGenerativeAI(process.env.EXPO_PUBLIC_GEMINI_API_KEY || '');
+import { getFunctions, httpsCallable } from 'firebase/functions';
 
 export interface SafetyContext {
   latitude: number;
@@ -22,45 +19,16 @@ export interface AIInsight {
 
 export const aiService = {
   /**
-   * Analyzes the current safety context using Gemini AI to provide proactive insights.
+   * Analyzes the current safety context using the secure Firebase Cloud Function.
    */
   analyzeSafetyContext: async (context: SafetyContext): Promise<AIInsight> => {
     try {
-      if (!process.env.EXPO_PUBLIC_GEMINI_API_KEY) {
-        return aiService.getFallbackInsight(context);
-      }
-
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
-
-      const prompt = `
-        You are "Luvv Guard", a protective AI for a couples' safety app. 
-        Analyze the following context and provide a brief safety insight for the partner.
-        Context:
-        - Current User Battery: ${Math.round(context.batteryLevel * 100)}% (${context.isCharging ? 'Charging' : 'Not charging'})
-        - Time: ${context.timeOfDay}
-        - Navigating: ${context.isNavigating ? 'Yes' : 'No'}
-        - User's Location: ${context.latitude}, ${context.longitude}
-        - Partner's Name: ${context.partnerName}
-
-        Return a JSON object with:
-        {
-          "status": "safe" | "warning" | "alert",
-          "message": "A short, reassuring or informative message for the partner (max 15 words)",
-          "suggestion": "Optional proactive suggestion (max 10 words)",
-          "reason": "Internal reason for this status"
-        }
-        Be protective but not alarmist. If it's late and battery is low, use "warning". If everything is normal, use "safe".
-      `;
-
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      const text = response.text();
-      
-      // Clean the response in case it contains markdown code blocks
-      const cleanedJson = text.replace(/```json|```/g, '').trim();
-      return JSON.parse(cleanedJson);
+      const functions = getFunctions();
+      const analyzeFn = httpsCallable<SafetyContext, AIInsight>(functions, 'analyzeSafetyContext');
+      const result = await analyzeFn(context);
+      return result.data;
     } catch (error) {
-      console.warn('[AIService] Gemini analysis failed:', error);
+      console.warn('[AIService] Cloud Function analysis failed:', error);
       return aiService.getFallbackInsight(context);
     }
   },

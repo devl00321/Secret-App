@@ -74,49 +74,49 @@ export const AddPlaceModal = ({ visible, onClose, onSave }: AddPlaceModalProps) 
           keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
         >
           <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation()}>
-            <View style={[styles.modalView, { backgroundColor: theme.surface }]}>
+            <View style={[styles.modalView, { backgroundColor: theme.bgSurface }]}>
               <View style={styles.header}>
-                <Text style={[styles.title, { color: theme.text }]}>Save this location</Text>
+                <Text style={[styles.title, { color: theme.textPrimary }]}>Save this location</Text>
                 <TouchableOpacity 
                   onPress={onClose}
                   style={styles.closeBtn}
                   hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
                 >
-                  <X size={24} color={theme.textLight} />
+                  <X size={24} color={theme.textSecondary} />
                 </TouchableOpacity>
               </View>
 
-              <View style={[styles.inputContainer, { backgroundColor: theme.background }]}>
-                <MapPin size={20} color={theme.primary} />
+              <View style={[styles.inputContainer, { backgroundColor: theme.bgPrimary }]}>
+                <MapPin size={20} color={theme.accentRose} />
                 <TextInput
-                  style={[styles.input, { color: theme.text }]}
+                  style={[styles.input, { color: theme.textPrimary }]}
                   placeholder="e.g. My Home, Tuition Center"
-                  placeholderTextColor={theme.textLight}
+                  placeholderTextColor={theme.textSecondary}
                   value={name}
                   onChangeText={setName}
                 />
               </View>
 
-              <Text style={[styles.sectionTitle, { color: theme.textLight }]}>CATEGORY</Text>
+              <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>CATEGORY</Text>
               <View style={styles.typesGrid}>
                 {PLACE_TYPES.map((type) => (
                   <TouchableOpacity
                     key={type.id}
                     style={[
                       styles.typeBtn,
-                      { backgroundColor: theme.background },
-                      selectedType === type.id && { borderColor: theme.primary, borderWidth: 2 }
+                      { backgroundColor: theme.bgPrimary },
+                      selectedType === type.id && { borderColor: theme.accentRose, borderWidth: 2 }
                     ]}
                     onPress={() => setSelectedType(type.id)}
                   >
                     <type.icon 
                       size={18} 
-                      color={selectedType === type.id ? theme.primary : theme.textLight} 
+                      color={selectedType === type.id ? theme.accentRose : theme.textSecondary} 
                       strokeWidth={2.5}
                     />
                     <Text style={[
                       styles.typeLabel, 
-                      { color: selectedType === type.id ? theme.primary : theme.text }
+                      { color: selectedType === type.id ? theme.accentRose : theme.textPrimary }
                     ]}>
                       {type.label}
                     </Text>
@@ -127,7 +127,7 @@ export const AddPlaceModal = ({ visible, onClose, onSave }: AddPlaceModalProps) 
               <TouchableOpacity
                 style={[
                   styles.saveBtn,
-                  { backgroundColor: name.trim() ? theme.primary : theme.border }
+                  { backgroundColor: name.trim() ? theme.accentRose : theme.borderDefault }
                 ]}
                 onPress={handleSave}
                 disabled={!name.trim()}

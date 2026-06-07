@@ -1,0 +1,47 @@
+# EAS Build Ignore Config (Monoreop Root)
+# This file overrides .gitignore during EAS packaging so that ignored configuration
+# files (like google-services.json, GoogleService-Info.plist, and .env files)
+# are successfully uploaded to EAS Build without committing them to Git history.
+
+# Dependencies
+**/node_modules/
+node_modules/
+.pnp
+.pnp.js
+
+# Testing
+coverage/
+
+# Production
+build/
+**/dist/
+web-build/
+
+# Expo
+**/.expo/
+.expo/
+expo-env.d.ts
+
+# Misc
+**/.DS_Store
+.DS_Store
+
+# Debug Logs
+**/*.log
+**/npm-debug.log*
+**/yarn-debug.log*
+**/yarn-error.log*
+
+# TypeScript Cache
+*.tsbuildinfo
+
+# IDEs
+**/.vscode/
+**/.idea/
+
+# Credentials (keep ignored for safety)
+**/*.jks
+**/*.p8
+**/*.p12
+**/*.key
+**/*.mobileprovision

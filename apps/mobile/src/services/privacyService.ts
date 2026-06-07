@@ -1,4 +1,5 @@
 import { db, authInstance, doc, updateDoc, collection, getDocs, getDoc, deleteDoc, writeBatch } from './firebase';
+import { deleteUser } from '@react-native-firebase/auth';
 import { useAuthStore } from '../store/useAuthStore';
 import { useLocationStore } from '../store/useLocationStore';
 
@@ -87,12 +88,16 @@ export const privacyService = {
       await deleteDoc(doc(db, 'users', userId));
 
       // 3. Delete Auth User
-      await user.delete();
+      await deleteUser(user);
 
       return true;
-    } catch (err) {
-      console.error('[PrivacyService] Failed to delete account:', err);
-      return false;
+    } catch (err: any) {
+      if (err?.code === 'auth/requires-recent-login' || err?.message?.includes('requires-recent-login')) {
+        console.warn('[PrivacyService] Deletion requires recent login.');
+      } else {
+        console.error('[PrivacyService] Failed to delete account:', err);
+      }
+      throw err;
     }
   }
 };

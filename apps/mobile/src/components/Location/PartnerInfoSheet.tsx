@@ -28,7 +28,9 @@ import {
   MessageCircle,
   Phone,
   Wifi,
-  WifiOff
+  WifiOff,
+  Bell,
+  Cake
 } from 'lucide-react-native';
 import { Svg, Circle as PingCircle } from 'react-native-svg';
 import { useTheme } from '../../theme';
@@ -49,6 +51,7 @@ interface PartnerInfoSheetProps {
   onLocate: () => void;
   onPing: () => void;
   onRefresh: () => void;
+  onRing: () => void;
   partner: any;
   partnerName: string;
   partnerLocation: any;
@@ -70,6 +73,7 @@ export const PartnerInfoSheet = ({
   onLocate,
   onPing,
   onRefresh,
+  onRing,
   partner,
   partnerName,
   partnerLocation,
@@ -83,7 +87,18 @@ export const PartnerInfoSheet = ({
   const panY = useRef(new Animated.Value(SNAP_BOTTOM)).current;
   const lastPanY = useRef(SNAP_BOTTOM);
   const [pingCooldown, setPingCooldown] = useState(0);
+  const [ringCooldown, setRingCooldown] = useState(0);
   const [snapState, setSnapState] = useState<'bottom' | 'half' | 'top'>('bottom');
+
+  // Keep lastPanY.current updated safely without using private _value
+  useEffect(() => {
+    const listenerId = panY.addListener(({ value }) => {
+      lastPanY.current = value;
+    });
+    return () => {
+      panY.removeListener(listenerId);
+    };
+  }, [panY]);
 
   const snapTo = (toValue: number) => {
     let state: 'bottom' | 'half' | 'top' = 'bottom';
@@ -91,12 +106,13 @@ export const PartnerInfoSheet = ({
     else if (toValue === SNAP_HALF) state = 'half';
     
     setSnapState(state);
+    lastPanY.current = toValue;
     
     Animated.spring(panY, {
       toValue,
       useNativeDriver: true,
-      tension: 50,
-      friction: 12,
+      tension: 65,
+      friction: 10,
     }).start();
     
     if (toValue === SNAP_BOTTOM) {
@@ -107,6 +123,8 @@ export const PartnerInfoSheet = ({
   useEffect(() => {
     if (visible) {
       snapTo(SNAP_HALF);
+      // Auto-refresh when opened to get latest battery/location
+      onRefresh();
     } else {
       snapTo(SNAP_BOTTOM);
     }
@@ -122,10 +140,20 @@ export const PartnerInfoSheet = ({
     return () => clearInterval(timer);
   }, [pingCooldown]);
 
+  useEffect(() => {
+    let timer: any;
+    if (ringCooldown > 0) {
+      timer = setInterval(() => {
+        setRingCooldown(prev => Math.max(0, prev - 1));
+      }, 1000);
+    }
+    return () => clearInterval(timer);
+  }, [ringCooldown]);
+
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dy) > 10,
+      onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dy) > 20,
       onPanResponderMove: (_, gesture) => {
         const nextY = lastPanY.current + gesture.dy;
         if (nextY >= SNAP_TOP) {
@@ -155,7 +183,7 @@ export const PartnerInfoSheet = ({
         }
       },
       onPanResponderGrant: () => {
-        lastPanY.current = (panY as any)._value;
+        // lastPanY.current is kept in sync via addListener
       }
     })
   ).current;
@@ -182,9 +210,67 @@ export const PartnerInfoSheet = ({
     return <Battery size={14} color={color} />;
   };
 
-  const lastSeen = partnerLocation?.timestamp ? 
-    new Date(partnerLocation.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 
-    'Just now';
+  const lastSeen = React.useMemo(() => {
+    if (!partnerLocation?.timestamp) return 'Just now';
+    
+    let timeMs: number | null = null;
+    const ts = partnerLocation.timestamp;
+    
+    if (typeof ts === 'number') {
+      timeMs = ts;
+    } else if (typeof ts === 'object' && ts !== null) {
+      if (typeof (ts as any).toMillis === 'function') {
+        timeMs = (ts as any).toMillis();
+      } else if (typeof (ts as any).seconds === 'number') {
+        timeMs = (ts as any).seconds * 1000;
+      } else if (ts instanceof Date) {
+        timeMs = ts.getTime();
+      }
+    } else if (typeof ts === 'string') {
+      const parsed = Date.parse(ts);
+      if (!isNaN(parsed)) {
+        timeMs = parsed;
+      }
+    }
+
+    if (timeMs === null || isNaN(timeMs)) {
+      return 'Just now';
+    }
+
+    try {
+      const date = new Date(timeMs);
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    } catch (e) {
+      console.warn('[PartnerInfoSheet] Failed to format lastSeen time:', e);
+      return 'Just now';
+    }
+  }, [partnerLocation?.timestamp]);
+
+  const daysToBirthday = React.useMemo(() => {
+    if (!partner?.dob) return null;
+    const dobParts = partner.dob.split('/');
+    if (dobParts.length !== 3) return null;
+    
+    const [dayStr, monthStr, ] = dobParts;
+    const month = parseInt(monthStr, 10) - 1;
+    const day = parseInt(dayStr, 10);
+    
+    if (isNaN(month) || isNaN(day)) return null;
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const nextBirthday = new Date(today.getFullYear(), month, day);
+    
+    if (today.getTime() > nextBirthday.getTime()) {
+      nextBirthday.setFullYear(today.getFullYear() + 1);
+    } else if (today.getTime() === nextBirthday.getTime()) {
+      return 0;
+    }
+
+    const diffTime = Math.abs(nextBirthday.getTime() - today.getTime());
+    return Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+  }, [partner?.dob]);
 
   return (
     <Modal
@@ -202,62 +288,61 @@ export const PartnerInfoSheet = ({
         <Animated.View 
           style={[
             styles.sheet, 
-            { backgroundColor: theme.background, transform: [{ translateY: panY }] }
+            { backgroundColor: theme.bgPrimary, transform: [{ translateY: panY }] }
           ]}
-          {...panResponder.panHandlers}
         >
-          <View style={styles.headerContainer}>
+          <View style={styles.headerContainer} {...panResponder.panHandlers}>
             <View style={styles.handle} />
             <View style={styles.headerMain}>
               <View style={{ flex: 1 }}>
-                <Text style={[styles.partnerName, { color: theme.text }]}>{partnerName}</Text>
-                <Text style={[styles.locationSnippet, { color: theme.textLight }]} numberOfLines={1}>
+                <Text style={[styles.partnerName, { color: theme.textPrimary }]}>{partnerName}</Text>
+                <Text style={[styles.locationSnippet, { color: theme.textSecondary }]} numberOfLines={1}>
                   {partnerLocation?.address || 'Locating...'}
                 </Text>
                 <View style={styles.statusRow}>
-                  <Text style={[styles.statusText, { color: theme.textLight }]}>
+                  <Text style={[styles.statusText, { color: theme.textSecondary }]}>
                     {distance ? `${distance.toFixed(1)} km away` : 'Searching...'}
                   </Text>
                   <Text style={styles.dotSeparator}>•</Text>
                   <View style={styles.batteryInfo}>
                     {getBatteryIcon(partnerLocation?.batteryLevel)}
-                    <Text style={[styles.statusText, { color: theme.textLight, marginLeft: 4 }]}>
+                    <Text style={[styles.statusText, { color: theme.textSecondary, marginLeft: 4 }]}>
                       {partnerLocation?.batteryLevel || 100}%
                     </Text>
                   </View>
                   <View style={[styles.batteryInfo, { marginLeft: 8 }]}>
                     {partnerLocation?.isOnline !== false ? (
-                      <Wifi size={14} color={theme.textLight} />
+                      <Wifi size={14} color={theme.textSecondary} />
                     ) : (
                       <WifiOff size={14} color="#FF4747" />
                     )}
-                    <Text style={[styles.statusText, { color: partnerLocation?.isOnline !== false ? theme.textLight : "#FF4747", marginLeft: 4 }]}>
+                    <Text style={[styles.statusText, { color: partnerLocation?.isOnline !== false ? theme.textSecondary : "#FF4747", marginLeft: 4 }]}>
                       {partnerLocation?.isOnline !== false ? 'Online' : 'Offline'}
                     </Text>
                   </View>
                   <Text style={styles.dotSeparator}>•</Text>
-                  <Text style={[styles.statusText, { color: theme.textLight }]}>{lastSeen}</Text>
+                  <Text style={[styles.statusText, { color: theme.textSecondary }]}>{lastSeen}</Text>
                 </View>
               </View>
               <View style={styles.headerActions}>
                 <TouchableOpacity 
                   onPress={onRefresh} 
-                  style={[styles.refreshBtn, { backgroundColor: theme.surface }]}
+                  style={[styles.refreshBtn, { backgroundColor: theme.bgSurface }]}
                   disabled={isRefreshing}
                   hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
                 >
                   {isRefreshing ? (
-                    <ActivityIndicator size="small" color={theme.primary} />
+                    <ActivityIndicator size="small" color={theme.accentRose} />
                   ) : (
-                    <RefreshCcw size={18} color={theme.primary} />
+                    <RefreshCcw size={18} color={theme.accentRose} />
                   )}
                 </TouchableOpacity>
                 <TouchableOpacity 
                   onPress={() => snapTo(SNAP_BOTTOM)} 
-                  style={[styles.closeBtn, { backgroundColor: theme.surface }]}
+                  style={[styles.closeBtn, { backgroundColor: theme.bgSurface }]}
                   hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
                 >
-                  <X color={theme.text} size={20} />
+                  <X color={theme.textPrimary} size={20} />
                 </TouchableOpacity>
               </View>
             </View>
@@ -266,19 +351,19 @@ export const PartnerInfoSheet = ({
           <ScrollView 
             style={styles.content} 
             showsVerticalScrollIndicator={false}
-            scrollEnabled={snapState === 'top'}
+            scrollEnabled={true}
           >
             {/* Active Trip Banner */}
             {partnerTrip?.isActive && (
-              <View style={[styles.tripBanner, { backgroundColor: theme.primary + '10', borderColor: theme.primary + '30' }]}>
-                <View style={[styles.tripIcon, { backgroundColor: theme.primary }]}>
+              <View style={[styles.tripBanner, { backgroundColor: theme.accentRose + '10', borderColor: theme.accentRose + '30' }]}>
+                <View style={[styles.tripIcon, { backgroundColor: theme.accentRose }]}>
                   <Navigation2 size={20} color="white" />
                 </View>
                 <View style={styles.tripInfo}>
-                  <Text style={[styles.tripTitle, { color: theme.text }]}>
+                  <Text style={[styles.tripTitle, { color: theme.textPrimary }]}>
                     Heading to {partnerTrip.destination?.name || partnerName || 'Destination'}
                   </Text>
-                  <Text style={[styles.tripStatus, { color: theme.primary }]}>
+                  <Text style={[styles.tripStatus, { color: theme.accentRose }]}>
                     Live tracking active • Safe 🏃‍♂️
                   </Text>
                 </View>
@@ -288,33 +373,33 @@ export const PartnerInfoSheet = ({
             {/* Action Cards Section */}
             <View style={styles.actionGrid}>
               <TouchableOpacity 
-                style={[styles.actionCard, { backgroundColor: theme.surface }]}
+                style={[styles.actionCard, { backgroundColor: theme.bgSurface }]}
                 onPress={onLocate}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
                 <View style={[styles.actionIconCircle, { backgroundColor: '#F1F5F9' }]}>
-                  <MapPin color={theme.primary} size={24} fill={theme.primary + '20'} />
+                  <MapPin color={theme.accentRose} size={24} fill={theme.accentRose + '20'} />
                 </View>
-                <Text style={[styles.actionTitle, { color: theme.text }]}>Locate</Text>
-                <Text style={[styles.actionDesc, { color: theme.textLight }]}>Center Map</Text>
+                <Text style={[styles.actionTitle, { color: theme.textPrimary }]}>Locate</Text>
+                <Text style={[styles.actionDesc, { color: theme.textSecondary }]}>Center Map</Text>
               </TouchableOpacity>
 
               <TouchableOpacity 
-                style={[styles.actionCard, { backgroundColor: theme.surface }]}
+                style={[styles.actionCard, { backgroundColor: theme.bgSurface }]}
                 onPress={onChat}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
                 <View style={[styles.actionIconCircle, { backgroundColor: '#DCFCE7' }]}>
                   <MessageCircle color="#22C55E" size={24} fill="#22C55E" />
                 </View>
-                <Text style={[styles.actionTitle, { color: theme.text }]}>Chat</Text>
-                <Text style={[styles.actionDesc, { color: theme.textLight }]}>Private Msg</Text>
+                <Text style={[styles.actionTitle, { color: theme.textPrimary }]}>Chat</Text>
+                <Text style={[styles.actionDesc, { color: theme.textSecondary }]}>Private Msg</Text>
               </TouchableOpacity>
             </View>
 
             <View style={styles.actionGrid}>
               <TouchableOpacity 
-                style={[styles.actionCard, { backgroundColor: theme.surface }]}
+                style={[styles.actionCard, { backgroundColor: theme.bgSurface }]}
                 onPress={handlePing}
                 disabled={pingCooldown > 0}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
@@ -327,7 +412,7 @@ export const PartnerInfoSheet = ({
                           cx="13"
                           cy="13"
                           r="11"
-                          stroke={theme.primary}
+                          stroke={theme.accentRose}
                           strokeWidth="2.5"
                           fill="transparent"
                           strokeDasharray={circumference}
@@ -336,22 +421,21 @@ export const PartnerInfoSheet = ({
                           transform="rotate(-90 13 13)"
                         />
                       </Svg>
-                      <Text style={[styles.pingCountText, { color: theme.primary }]}>{pingCooldown}</Text>
+                      <Text style={[styles.pingCountText, { color: theme.accentRose }]}>{pingCooldown}</Text>
                     </View>
                   ) : (
-                    <Heart color={theme.heartPink} size={24} fill={theme.heartPink} />
+                    <Heart color={theme.accentRose} size={24} fill={theme.accentRose} />
                   )}
                 </View>
-                <Text style={[styles.actionTitle, { color: theme.text }]}>
+                <Text style={[styles.actionTitle, { color: theme.textPrimary }]}>
                   {pingCooldown > 0 ? 'Recharging' : 'Send Ping'}
                 </Text>
-                <Text style={[styles.actionDesc, { color: theme.textLight }]}>
+                <Text style={[styles.actionDesc, { color: theme.textSecondary }]}>
                   {pingCooldown > 0 ? `${pingCooldown}s left` : 'Get Attention'}
                 </Text>
               </TouchableOpacity>
-
               <TouchableOpacity 
-                style={[styles.actionCard, { backgroundColor: theme.surface }]}
+                style={[styles.actionCard, { backgroundColor: theme.bgSurface }]}
                 onPress={() => {
                   if (partner?.phoneNumber) {
                     Linking.openURL(`tel:${partner.phoneNumber}`);
@@ -364,52 +448,126 @@ export const PartnerInfoSheet = ({
                 <View style={[styles.actionIconCircle, { backgroundColor: '#E0F2FE' }]}>
                   <Phone color="#0EA5E9" size={24} fill="#0EA5E9" />
                 </View>
-                <Text style={[styles.actionTitle, { color: theme.text }]}>Call</Text>
-                <Text style={[styles.actionDesc, { color: theme.textLight }]}>Voice Call</Text>
+                <Text style={[styles.actionTitle, { color: theme.textPrimary }]}>Call</Text>
+                <Text style={[styles.actionDesc, { color: theme.textSecondary }]}>Voice Call</Text>
               </TouchableOpacity>
             </View>
 
             <View style={styles.actionGrid}>
               <TouchableOpacity 
-                style={[styles.actionCard, { backgroundColor: theme.surface }]}
+                style={[styles.actionCard, { backgroundColor: theme.bgSurface, opacity: ringCooldown > 0 ? 0.7 : 1 }]}
+                disabled={ringCooldown > 0}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+                  onRing();
+                  setRingCooldown(30);
+                }}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <View style={[styles.actionIconCircle, { backgroundColor: '#EDE9FE' }]}>
+                  {ringCooldown > 0 ? (
+                    <View style={styles.pingCooldownContainer}>
+                      <Svg width="26" height="26" viewBox="0 0 26 26">
+                        <PingCircle
+                          cx="13"
+                          cy="13"
+                          r="11"
+                          stroke={theme.accentRose + '20'}
+                          strokeWidth="2"
+                          fill="transparent"
+                        />
+                        <PingCircle
+                          cx="13"
+                          cy="13"
+                          r="11"
+                          stroke={theme.accentRose}
+                          strokeWidth="2"
+                          fill="transparent"
+                          strokeDasharray={2 * Math.PI * 11}
+                          strokeDashoffset={2 * Math.PI * 11 * (1 - ringCooldown / 30)}
+                          strokeLinecap="round"
+                          transform="rotate(-90 13 13)"
+                        />
+                      </Svg>
+                      <Text style={[styles.pingCountText, { color: theme.accentRose, fontSize: 10 }]}>{ringCooldown}</Text>
+                    </View>
+                  ) : (
+                    <Bell color="#8B5CF6" size={24} fill="#8B5CF6" />
+                  )}
+                </View>
+                <Text style={[styles.actionTitle, { color: theme.textPrimary }]}>
+                  {ringCooldown > 0 ? 'Recharging' : 'Ring Phone'}
+                </Text>
+                <Text style={[styles.actionDesc, { color: theme.textSecondary }]}>
+                  {ringCooldown > 0 ? `${ringCooldown}s left` : 'Play Loud Alarm'}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={[styles.actionCard, { backgroundColor: theme.bgSurface }]}
                 onPress={onNavigate}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
                 <View style={[styles.actionIconCircle, { backgroundColor: '#FEF3C7' }]}>
                   <Navigation2 color="#D97706" size={24} fill="#D97706" />
                 </View>
-                <Text style={[styles.actionTitle, { color: theme.text }]}>Directions</Text>
-                <Text style={[styles.actionDesc, { color: theme.textLight }]}>Open Maps</Text>
+                <Text style={[styles.actionTitle, { color: theme.textPrimary }]}>Directions</Text>
+                <Text style={[styles.actionDesc, { color: theme.textSecondary }]}>Open Maps</Text>
               </TouchableOpacity>
             </View>
 
             <View style={styles.sectionHeader}>
-              <Text style={[styles.sectionTitle, { color: theme.text }]}>Saved Places</Text>
+              <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Important Dates</Text>
             </View>
 
-            {savedPlaces && savedPlaces.length > 0 ? (
+            <View style={[styles.datesCard, { backgroundColor: theme.bgSurface }]}>
+               <View style={styles.dateRow}>
+                 <View style={[styles.dateIcon, { backgroundColor: theme.accentRoseSoft }]}>
+                   <Cake size={18} color={theme.accentRose} />
+                 </View>
+                 <View style={styles.dateInfo}>
+                   <Text style={[styles.dateLabel, { color: theme.textSecondary }]}>Birthday</Text>
+                   <Text style={[styles.dateValue, { color: theme.textPrimary }]}>
+                     {partner?.dob || 'Not set'}
+                   </Text>
+                 </View>
+                 {daysToBirthday !== null && (
+                   <View style={[styles.countdownBadge, { backgroundColor: daysToBirthday === 0 ? theme.accentRose : theme.bgPrimary }]}>
+                     <Text style={[styles.countdownText, { color: daysToBirthday === 0 ? 'white' : theme.accentRose }]}>
+                       {daysToBirthday === 0 ? 'Today!' : `${daysToBirthday}d left`}
+                     </Text>
+                   </View>
+                 )}
+               </View>
+            </View>
+
+            <View style={styles.sectionHeader}>
+              <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Saved Places</Text>
+            </View>
+
+            {(Array.isArray(savedPlaces) && savedPlaces.length > 0) ? (
               savedPlaces.map((place: any, index: number) => (
                 <TouchableOpacity 
                   key={index}
-                  style={[styles.placeRow, { backgroundColor: theme.surface }]}
+                  style={[styles.placeRow, { backgroundColor: theme.bgSurface }]}
                   onPress={() => onFocusPlace(place)}
                   activeOpacity={0.7}
                 >
-                  <View style={[styles.placeIcon, { backgroundColor: theme.background }]}>
-                    <MapPin color={theme.primary} size={18} />
+                  <View style={[styles.placeIcon, { backgroundColor: theme.bgPrimary }]}>
+                    <MapPin color={theme.accentRose} size={18} />
                   </View>
                   <View style={styles.placeDetails}>
-                    <Text style={[styles.placeName, { color: theme.text }]}>{place.name}</Text>
-                    <Text style={[styles.placeAddress, { color: theme.textLight }]} numberOfLines={1}>
+                    <Text style={[styles.placeName, { color: theme.textPrimary }]}>{place.name}</Text>
+                    <Text style={[styles.placeAddress, { color: theme.textSecondary }]} numberOfLines={1}>
                       {place.type || 'Custom Location'}
                     </Text>
                   </View>
-                  <ChevronRight color={theme.textLight} size={20} />
+                  <ChevronRight color={theme.textSecondary} size={20} />
                 </TouchableOpacity>
               ))
             ) : (
               <View style={styles.emptyPlaces}>
-                <Text style={[{ color: theme.textLight, fontStyle: 'italic' }]}>No shared places yet.</Text>
+                <Text style={[{ color: theme.textSecondary, fontStyle: 'italic' }]}>No shared places yet.</Text>
               </View>
             )}
             <View style={{ height: 120 }} />
@@ -472,10 +630,26 @@ const styles = StyleSheet.create({
   statusRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
   },
   statusText: {
     fontSize: 13,
     fontWeight: '600',
+  },
+  pingCooldownContainer: {
+    width: 26,
+    height: 26,
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
+  },
+  pingCountText: {
+    fontSize: 10,
+    fontWeight: '800',
+    position: 'absolute',
+    textAlign: 'center',
+    width: '100%',
+    lineHeight: 26, // Center vertically
   },
   dotSeparator: {
     marginHorizontal: 8,
@@ -539,11 +713,6 @@ const styles = StyleSheet.create({
   pingTimerWrapper: {
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  pingCountText: {
-    position: 'absolute',
-    fontSize: 10,
-    fontWeight: '900',
   },
   sectionHeader: {
     marginTop: 32,
@@ -615,5 +784,45 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     opacity: 0.8,
-  }
+  },
+  datesCard: {
+    padding: 16,
+    borderRadius: 24,
+    marginHorizontal: 4,
+  },
+  dateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  dateIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  dateInfo: {
+    flex: 1,
+  },
+  dateLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: 2,
+  },
+  dateValue: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  countdownBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  countdownText: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
 });

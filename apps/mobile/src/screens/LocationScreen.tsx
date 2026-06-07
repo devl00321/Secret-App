@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, Animated, Platform, Linking, Dimensions, Alert } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, Animated, Platform, Linking, Dimensions, Alert, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { 
@@ -16,7 +16,8 @@ import {
   Clock,
   BellOff,
   VolumeX,
-  Route
+  Route,
+  RefreshCcw
 } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useTheme } from '../theme';
@@ -33,8 +34,10 @@ import { PingAnimation } from '../components/Location/PingAnimation';
 import { AddPlaceModal } from '../components/Location/AddPlaceModal';
 import { NavigationOverlay } from '../components/Location/NavigationOverlay';
 import * as Haptics from 'expo-haptics';
+import * as Location from 'expo-location';
 import { GooglePlacesAutocomplete } from 'react-native-google-places-autocomplete';
 import { darkMapStyle } from '../theme/darkMapStyle';
+import { silverMapStyle } from '../theme/silverMapStyle';
 
 // Safe require for native modules to prevent crashes when rebuilding is needed
 let Speech: any = null;
@@ -48,7 +51,9 @@ const GOOGLE_MAPS_APIKEY = Platform.select({
   ios: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_IOS,
   android: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_ANDROID,
 }) || '';
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+console.log('[LocationScreen] Maps API Key Loaded:', GOOGLE_MAPS_APIKEY ? `YES (${GOOGLE_MAPS_APIKEY.substring(0, 5)}...)` : 'NO');
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 export const LocationScreen = () => {
   const theme = useTheme();
@@ -82,7 +87,8 @@ export const LocationScreen = () => {
     isVoiceEnabled,
     setNavigationSteps,
     setIsNavigating,
-    toggleVoice
+    toggleVoice,
+    setIncomingPing
   } = useLocationStore();
 
   const [showSettings, setShowSettings] = useState(false);
@@ -95,12 +101,51 @@ export const LocationScreen = () => {
   const [isSelectingLocation, setIsSelectingLocation] = useState(false);
   const [showAddPlaceModal, setShowAddPlaceModal] = useState(false);
   const [showPath, setShowPath] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const [autoFollow, setAutoFollow] = useState(true);
   const [selectedCoords, setSelectedCoords] = useState<{ latitude: number, longitude: number } | null>(null);
   const [selectedLocationName, setSelectedLocationName] = useState<string | null>(null);
   const bannerPulse = useRef(new Animated.Value(1)).current;
   const lastSpokenInstruction = useRef<string | null>(null);
   const partnerName = currentUserProfile?.partnerNickname || partner?.displayName || 'Partner';
+  
+  const formattedLastSeen = React.useMemo(() => {
+    if (!partnerLocation?.timestamp) return 'Just now';
+    
+    let timeMs: number | null = null;
+    const ts = partnerLocation.timestamp as any;
+    
+    if (typeof ts === 'number') {
+      timeMs = ts;
+    } else if (typeof ts === 'object' && ts !== null) {
+      if (typeof (ts as any).toMillis === 'function') {
+        timeMs = (ts as any).toMillis();
+      } else if (typeof (ts as any).seconds === 'number') {
+        timeMs = (ts as any).seconds * 1000;
+      } else if (ts instanceof Date) {
+        timeMs = ts.getTime();
+      }
+    } else if (typeof ts === 'string') {
+      const parsed = Date.parse(ts);
+      if (!isNaN(parsed)) {
+        timeMs = parsed;
+      }
+    }
+
+    if (timeMs === null || isNaN(timeMs)) {
+      return 'Just now';
+    }
+
+    try {
+      const date = new Date(timeMs);
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    } catch (e) {
+      console.warn('[LocationScreen] Failed to format lastSeen time:', e);
+      return 'Just now';
+    }
+  }, [partnerLocation?.timestamp]);
+
+  const [isRingingMe, setIsRingingMe] = useState(false);
 
   useEffect(() => {
     locationService.startTracking();
@@ -112,11 +157,34 @@ export const LocationScreen = () => {
       }
     }, 1500);
 
-    return () => {
-      locationService.stopTracking();
-      clearTimeout(timer);
-    };
-  }, [coupleId, partner?.id]);
+    if (user?.uid) {
+      const unsubscribePings = locationService.subscribeToIncomingPings(user.uid, (ping) => {
+        setIncomingPing(ping);
+      });
+      const unsubscribeRequests = locationService.subscribeToLocationRequests(user.uid);
+      const unsubscribeRings = locationService.subscribeToRingRequests(user.uid, () => {
+        setIsRingingMe(true);
+        alertService.triggerRemoteRing();
+      });
+      
+      // Auto-refresh partner location every 5 minutes
+      const heartbeatInterval = setInterval(() => {
+        if (partner?.id) {
+          console.log('[Heartbeat] Auto-refreshing partner data...');
+          locationService.requestPartnerLocationUpdate(partner.id);
+        }
+      }, 5 * 60 * 1000);
+
+      return () => {
+        locationService.stopTracking();
+        clearTimeout(timer);
+        unsubscribePings();
+        unsubscribeRequests();
+        unsubscribeRings();
+        clearInterval(heartbeatInterval);
+      };
+    }
+  }, [user?.uid, partner?.id]);
 
   useEffect(() => {
     if (incomingPing) {
@@ -256,7 +324,7 @@ export const LocationScreen = () => {
   const isPartnerSos = activeSos?.isActive && activeSos.triggeredBy !== user?.uid;
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.background }]}>
+    <View style={[styles.container, { backgroundColor: theme.bgPrimary }]}>
       <View style={styles.map}>
         <MapComponent
           mapRef={mapRef}
@@ -270,15 +338,15 @@ export const LocationScreen = () => {
             if (steps) setNavigationSteps(steps);
           }}
           theme={theme}
-          darkMapStyle={darkMapStyle}
+          darkMapStyle={theme.isDark ? darkMapStyle : silverMapStyle}
           user={user}
           savedPlaces={[
-            ...(savedPlaces || []).map(p => ({ 
+            ...(Array.isArray(savedPlaces) ? savedPlaces : []).map(p => ({ 
               ...p, 
               isPartner: false, 
               color: currentUserProfile?.gender === 'Male' ? '#6B66FF' : '#FF6B6B' 
             })),
-            ...(partnerSavedPlaces || []).map(p => ({ 
+            ...(Array.isArray(partnerSavedPlaces) ? partnerSavedPlaces : []).map(p => ({ 
               ...p, 
               isPartner: true, 
               name: `${partnerName}'s ${p.name}`,
@@ -308,8 +376,15 @@ export const LocationScreen = () => {
               ? partnerLastCompletedPath
               : null
           }
-          onRegionChangeComplete={(region: any) => {
-            if (isSelectingLocation) {
+          onRegionChangeComplete={(region: any, gesture?: any) => {
+            // If it's a manual gesture, clear search query so the map center becomes the source of truth again
+            if (gesture?.isGesture && searchQuery) {
+              setSearchQuery('');
+            }
+
+            // Only update selected coords from map center if we are NOT in the middle of a search animation
+            // This prevents "drift" after the map animates to a search result
+            if (isSelectingLocation && (!searchQuery || gesture?.isGesture)) {
               setSelectedCoords({ latitude: region.latitude, longitude: region.longitude });
             }
           }}
@@ -412,51 +487,51 @@ export const LocationScreen = () => {
           <View style={styles.topContainer}>
               <View style={styles.topBar}>
                 <TouchableOpacity
-                  style={[styles.iconButton, { backgroundColor: theme.surface }]}
+                  style={[styles.iconButton, { backgroundColor: theme.bgSurface }]}
                   onPress={() => setShowSettings(true)}
                   hitSlop={{ top: 25, bottom: 25, left: 25, right: 25 }}
                 >
-                  <Settings size={22} color={theme.text} />
+                  <Settings size={22} color={theme.textPrimary} />
                 </TouchableOpacity>
                 
-                <View style={[styles.liveBadge, { backgroundColor: theme.surface }]}>
+                <View style={[styles.liveBadge, { backgroundColor: theme.bgSurface }]}>
                   <View style={styles.pulseDot} />
-                  <Text style={[styles.liveText, { color: theme.text }]}>Sharing Live</Text>
+                  <Text style={[styles.liveText, { color: theme.textPrimary }]}>Sharing Live</Text>
                 </View>
 
                 <TouchableOpacity
-                  style={[styles.iconButton, { backgroundColor: theme.surface }]}
+                  style={[styles.iconButton, { backgroundColor: theme.bgSurface }]}
                   onPress={centerOnUser}
                   hitSlop={{ top: 25, bottom: 25, left: 25, right: 25 }}
                 >
-                  <Navigation2 size={22} color={theme.text} style={{ transform: [{ rotate: '45deg' }] }} />
+                  <Navigation2 size={22} color={theme.textPrimary} style={{ transform: [{ rotate: '45deg' }] }} />
                 </TouchableOpacity>
               </View>
 
               <View style={styles.leftControl}>
                 <TouchableOpacity
-                  style={[styles.iconButton, { backgroundColor: theme.surface, marginBottom: 12 }]}
+                  style={[styles.iconButton, { backgroundColor: theme.bgSurface, marginBottom: 12 }]}
                   onPress={() => setShowReachSafely(true)}
                   hitSlop={{ top: 25, bottom: 25, left: 25, right: 25 }}
                 >
-                  <Shield size={22} color={theme.primary} />
+                  <Shield size={22} color={theme.accentRose} />
                 </TouchableOpacity>
 
                 <View style={{ marginBottom: 12 }}>
                   <TouchableOpacity
-                    style={[styles.iconButton, { backgroundColor: showPath ? theme.primary : theme.surface }]}
+                    style={[styles.iconButton, { backgroundColor: showPath ? theme.accentRose : theme.bgSurface }]}
                     onPress={() => {
                       setShowPath(!showPath);
                       if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                     }}
                     hitSlop={{ top: 25, bottom: 25, left: 25, right: 25 }}
                   >
-                    <Route size={22} color={showPath ? 'white' : theme.text} />
+                    <Route size={22} color={showPath ? 'white' : theme.textPrimary} />
                   </TouchableOpacity>
                   
                   {showPath && distanceToPartner !== null && (
                     <View style={[styles.pathDistanceBadge, { 
-                      backgroundColor: theme.surface, 
+                      backgroundColor: theme.bgSurface, 
                       position: 'absolute', 
                       left: 50, 
                       top: 4, 
@@ -465,7 +540,7 @@ export const LocationScreen = () => {
                       minWidth: 70,
                       alignItems: 'center'
                     }]}>
-                      <Text style={[styles.pathDistanceText, { color: theme.text }]}>
+                      <Text style={[styles.pathDistanceText, { color: theme.textPrimary }]}>
                         {distanceToPartner < 1 ? `${Math.round(distanceToPartner * 1000)}m` : `${distanceToPartner.toFixed(1)}km`}
                       </Text>
                     </View>
@@ -475,7 +550,7 @@ export const LocationScreen = () => {
 
               <View style={styles.rightControl}>
                 <TouchableOpacity
-                  style={[styles.iconButton, { backgroundColor: theme.surface }]}
+                  style={[styles.iconButton, { backgroundColor: theme.bgSurface }]}
                   onPress={() => setShowPartnerInfo(true)}
                   hitSlop={{ top: 25, bottom: 25, left: 25, right: 25 }}
                 >
@@ -483,11 +558,11 @@ export const LocationScreen = () => {
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  style={[styles.iconButton, { backgroundColor: isNavigating ? theme.primary : theme.surface, marginTop: 12 }]}
+                  style={[styles.iconButton, { backgroundColor: isNavigating ? theme.accentRose : theme.bgSurface, marginTop: 12 }]}
                   onPress={toggleNavigation}
                   hitSlop={{ top: 25, bottom: 25, left: 25, right: 25 }}
                 >
-                  <Navigation2 size={22} color={isNavigating ? 'white' : theme.primary} />
+                  <Navigation2 size={22} color={isNavigating ? 'white' : theme.accentRose} />
                 </TouchableOpacity>
               </View>
             </View>
@@ -497,27 +572,27 @@ export const LocationScreen = () => {
               isTripActive ? (
               <ReachSafelyMode />
             ) : isIntercepting ? (
-              <View style={[styles.interceptCard, { backgroundColor: theme.surface }]}>
+              <View style={[styles.interceptCard, { backgroundColor: theme.bgSurface }]}>
                 <View style={styles.interceptHeader}>
                   <View style={styles.interceptIcon}>
-                    <Navigation2 size={20} color={theme.primary} />
+                    <Navigation2 size={20} color={theme.accentRose} />
                   </View>
                   <View style={styles.interceptTitleContainer}>
-                    <Text style={[styles.interceptTitle, { color: theme.text }]}>
+                    <Text style={[styles.interceptTitle, { color: theme.textPrimary }]}>
                       Locating {partnerName}
                     </Text>
-                    <Text style={[styles.interceptSubtitle, { color: theme.textLight }]}>
+                    <Text style={[styles.interceptSubtitle, { color: theme.textSecondary }]}>
                       Live path updated • Intercepting 🚀
                     </Text>
                   </View>
                   <TouchableOpacity onPress={() => setIsIntercepting(false)}>
-                    <X size={20} color={theme.textLight} />
+                    <X size={20} color={theme.textTertiary} />
                   </TouchableOpacity>
                 </View>
                 
                 <View style={styles.interceptMetrics}>
                   <View style={styles.metricBox}>
-                    <Text style={[styles.metricMain, { color: theme.primary }]}>
+                    <Text style={[styles.metricMain, { color: theme.accentRose }]}>
                       {distanceToPartner 
                         ? distanceToPartner < 1 
                           ? `${Math.round(distanceToPartner * 1000)} m` 
@@ -526,7 +601,7 @@ export const LocationScreen = () => {
                     </Text>
                     <Text style={styles.metricSub}>DISTANCE</Text>
                   </View>
-                  <View style={[styles.divider, { backgroundColor: theme.border }]} />
+                  <View style={[styles.divider, { backgroundColor: theme.borderDefault }]} />
                   <View style={styles.metricBox}>
                     <Text style={[styles.metricMain, { color: '#00C853' }]}>
                       {etaToPartner ? `${Math.round(etaToPartner)} min` : '--'}
@@ -536,35 +611,35 @@ export const LocationScreen = () => {
                 </View>
 
                 <TouchableOpacity 
-                  style={[styles.actionBtn, { backgroundColor: theme.border + '50' }]}
+                  style={[styles.actionBtn, { backgroundColor: theme.borderDefault + '50' }]}
                   onPress={() => setIsIntercepting(false)}
                 >
-                  <Text style={[styles.actionBtnText, { color: theme.text }]}>Stop Intercept</Text>
+                  <Text style={[styles.actionBtnText, { color: theme.textPrimary }]}>Stop Intercept</Text>
                 </TouchableOpacity>
               </View>
             ) : partnerWalkSafe?.isActive ? (
-              <View style={[styles.statusCard, { backgroundColor: theme.surface }]}>
+              <View style={[styles.statusCard, { backgroundColor: theme.bgSurface }]}>
                 <View style={styles.statusHeader}>
                   <View style={[styles.statusIcon, { backgroundColor: 'rgba(52, 199, 89, 0.1)' }]}>
                     <Shield size={20} color="#34C759" />
                   </View>
                   <View style={styles.statusInfo}>
-                    <Text style={[styles.statusTitle, { color: theme.text }]}>
+                    <Text style={[styles.statusTitle, { color: theme.textPrimary }]}>
                       {partnerName} is on a trip
                     </Text>
-                    <Text style={[styles.statusSubtitle, { color: theme.textLight }]}>
+                    <Text style={[styles.statusSubtitle, { color: theme.textSecondary }]}>
                       Heading to {partnerWalkSafe.destinationName}
                     </Text>
                   </View>
                   <View style={styles.timeBadge}>
-                    <Clock size={12} color={theme.primary} />
-                    <Text style={[styles.timeText, { color: theme.primary }]}>
+                    <Clock size={12} color={theme.accentRose} />
+                    <Text style={[styles.timeText, { color: theme.accentRose }]}>
                       {partnerWalkSafe.deadline ? Math.max(0, Math.round((partnerWalkSafe.deadline - Date.now()) / 60000)) : 0} min
                     </Text>
                   </View>
                 </View>
                 
-                <View style={[styles.progressBarContainer, { backgroundColor: theme.border + '30' }]}>
+                <View style={[styles.progressBarContainer, { backgroundColor: theme.borderDefault + '30' }]}>
                   <View style={[styles.progressBar, { 
                     backgroundColor: '#34C759', 
                     width: `${Math.min(100, Math.max(10, 100 - ((partnerWalkSafe.lastCheckDistance || 0) / 5000) * 100))}%` 
@@ -572,7 +647,7 @@ export const LocationScreen = () => {
                 </View>
 
                 <TouchableOpacity 
-                  style={[styles.actionBtn, { backgroundColor: theme.primary }]}
+                  style={[styles.actionBtn, { backgroundColor: theme.accentRose }]}
                   onPress={() => {
                     setIsIntercepting(true);
                     zoomToPartner();
@@ -583,28 +658,28 @@ export const LocationScreen = () => {
                 </TouchableOpacity>
               </View>
             ) : (
-              <View style={[styles.statusCard, { backgroundColor: theme.surface }]}>
+              <View style={[styles.statusCard, { backgroundColor: theme.bgSurface }]}>
                 <View style={styles.statusHeader}>
                   <View style={[styles.statusIcon, { backgroundColor: 'rgba(107, 102, 255, 0.1)' }]}>
-                    <ShieldCheck size={20} color={theme.primary} />
+                    <ShieldCheck size={20} color={theme.accentRose} />
                   </View>
                   <View style={styles.statusInfo}>
-                    <Text style={[styles.statusTitle, { color: theme.text }]}>
+                    <Text style={[styles.statusTitle, { color: theme.textPrimary }]}>
                       {partnerName} is safe
                     </Text>
-                    <Text style={[styles.statusSubtitle, { color: theme.textLight }]}>
-                      Last seen {new Date(partnerLocation?.timestamp || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    <Text style={[styles.statusSubtitle, { color: theme.textSecondary }]}>
+                      Last seen {formattedLastSeen}
                     </Text>
                   </View>
                   {partnerLocation?.batteryLevel !== undefined && (
                     <View style={styles.batteryInfo}>
                       <Text style={[styles.batteryText, { 
-                        color: partnerLocation.batteryLevel < 20 ? '#FF3B30' : theme.textLight 
+                        color: partnerLocation.batteryLevel < 20 ? '#FF3B30' : theme.textSecondary 
                       }]}>
                         {partnerLocation.batteryLevel}%
                       </Text>
                       <View style={[styles.batteryIcon, { 
-                        borderColor: theme.textLight,
+                        borderColor: theme.textSecondary,
                         backgroundColor: partnerLocation.batteryLevel < 20 ? '#FF3B30' : '#34C759'
                       }]} />
                     </View>
@@ -614,7 +689,7 @@ export const LocationScreen = () => {
                 {selectedCoords ? (
                   <View style={styles.tripActionContainer}>
                     <TouchableOpacity 
-                      style={[styles.startTripBtn, { backgroundColor: theme.primary }]}
+                      style={[styles.startTripBtn, { backgroundColor: theme.accentRose }]}
                       onPress={() => {
                         locationService.startWalkSafe(
                           selectedLocationName || 'Selected Destination',
@@ -629,19 +704,19 @@ export const LocationScreen = () => {
                       <Text style={styles.startTripText}>Start Walk Safe to {selectedLocationName || 'Destination'}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity 
-                      style={[styles.cancelTripBtn, { backgroundColor: theme.border + '50' }]}
+                      style={[styles.cancelTripBtn, { backgroundColor: theme.borderDefault + '50' }]}
                       onPress={() => {
                         setSelectedCoords(null);
                         setSelectedLocationName(null);
                       }}
                     >
-                      <X size={18} color={theme.textLight} />
+                      <X size={18} color={theme.textSecondary} />
                     </TouchableOpacity>
                   </View>
                 ) : (
                   <View style={styles.tripActionContainer}>
                     <TouchableOpacity 
-                      style={[styles.startTripBtn, { backgroundColor: theme.primary }]}
+                      style={[styles.startTripBtn, { backgroundColor: theme.accentRose }]}
                       onPress={() => setShowSettings(true)}
                     >
                       <Navigation2 size={18} color="white" />
@@ -680,12 +755,33 @@ export const LocationScreen = () => {
           <View style={styles.searchOverlay}>
             <GooglePlacesAutocomplete
               placeholder="Search for a place..."
+              textInputProps={{
+                returnKeyType: 'search',
+                value: searchQuery,
+                onChangeText: setSearchQuery,
+                onSubmitEditing: async () => {
+                  if (searchQuery && mapRef.current) {
+                    const results = await Location.geocodeAsync(searchQuery);
+                    if (results && results.length > 0) {
+                      const { latitude, longitude } = results[0];
+                      setSelectedCoords({ latitude, longitude });
+                      setSelectedLocationName(searchQuery);
+                      mapRef.current.animateToRegion({
+                        latitude,
+                        longitude,
+                        latitudeDelta: 0.01,
+                        longitudeDelta: 0.01,
+                      }, 1000);
+                    }
+                  }
+                }
+              }}
               onPress={(data, details = null) => {
                 if (details && mapRef.current) {
                   const { lat, lng } = details.geometry.location;
                   setSelectedCoords({ latitude: lat, longitude: lng });
                   setSelectedLocationName(data.description.split(',')[0]);
-                  setIsSelectingLocation(false);
+                  setSearchQuery(data.description);
                   mapRef.current.animateToRegion({
                     latitude: lat,
                     longitude: lng,
@@ -695,12 +791,25 @@ export const LocationScreen = () => {
                 }
               }}
               fetchDetails={true}
+              onFail={(error) => console.error('[GooglePlacesAutocomplete] Error:', error)}
               renderRightButton={() => (
                 <TouchableOpacity 
-                  style={[styles.searchBtn, { backgroundColor: theme.primary }]}
-                  onPress={() => {
-                    // Logic to trigger search if needed, but Autocomplete handles it
-                    // This button is mostly for visual cue / explicit confirmation
+                  style={[styles.searchBtn, { backgroundColor: theme.accentRose }]}
+                  onPress={async () => {
+                    if (searchQuery && mapRef.current) {
+                      const results = await Location.geocodeAsync(searchQuery);
+                      if (results && results.length > 0) {
+                        const { latitude, longitude } = results[0];
+                        setSelectedCoords({ latitude, longitude });
+                        setSelectedLocationName(searchQuery);
+                        mapRef.current.animateToRegion({
+                          latitude,
+                          longitude,
+                          latitudeDelta: 0.01,
+                          longitudeDelta: 0.01,
+                        }, 1000);
+                      }
+                    }
                   }}
                 >
                   <Search size={18} color="white" />
@@ -709,30 +818,48 @@ export const LocationScreen = () => {
               query={{
                 key: GOOGLE_MAPS_APIKEY,
                 language: 'en',
-                types: 'geocode', // Better for finding addresses/cities
+              }}
+              requestUrl={{
+                useOnPlatform: 'all',
+                url: 'https://maps.googleapis.com/maps/api',
+                headers: Platform.select({
+                  ios: {
+                    'X-Ios-Bundle-Identifier': 'com.ripu.loveapp',
+                  },
+                  android: {
+                    'X-Android-Package': 'com.ripu.loveapp',
+                    'X-Android-Cert': '5E8F16062EA3CD2C4A0D547876BAA6F38CABF625',
+                  },
+                }) as any,
               }}
               styles={{
-                container: { flex: 0, width: '100%' },
+                container: { flex: 0, width: '100%', overflow: 'visible' },
                 textInputContainer: {
                   flexDirection: 'row',
                   alignItems: 'center',
+                  zIndex: 2001,
                 },
                 textInput: {
                   height: 50,
-                  backgroundColor: theme.surface,
+                  backgroundColor: theme.bgSurface,
                   borderRadius: 15,
                   paddingHorizontal: 15,
                   fontSize: 16,
-                  color: theme.text,
+                  color: theme.textPrimary,
                   flex: 1,
-                  ...theme.shadows.soft,
+                  
                 },
                 listView: {
-                  backgroundColor: theme.surface,
+                  position: 'absolute',
+                  top: 55,
+                  left: 0,
+                  right: 0,
+                  backgroundColor: theme.bgSurface,
                   borderRadius: 15,
-                  marginTop: 5,
-                  ...theme.shadows.medium,
-                  zIndex: 1000,
+                  zIndex: 2000,
+                  maxHeight: 250,
+                  
+                  elevation: 5,
                 },
                 row: {
                   padding: 13,
@@ -741,31 +868,34 @@ export const LocationScreen = () => {
                 },
                 separator: {
                   height: 1,
-                  backgroundColor: theme.border,
+                  backgroundColor: theme.borderDefault,
                 },
                 description: {
-                  color: theme.text,
+                  color: theme.textPrimary,
+                  fontWeight: '500',
                 },
               }}
               enablePoweredByContainer={false}
-              nearbyPlacesAPI="GooglePlacesSearch"
-              debounce={400}
+              debounce={200}
+              keyboardShouldPersistTaps="handled"
+              nearbyPlacesAPI="GoogleReverseGeocoding"
             />
           </View>
 
-          <View style={[styles.confirmCard, { backgroundColor: theme.surface }]}>
-            <Text style={[styles.confirmTitle, { color: theme.text }]}>Move map to pick location</Text>
+          <View style={[styles.confirmCard, { backgroundColor: theme.bgSurface }]}>
+            <Text style={[styles.confirmTitle, { color: theme.textPrimary }]}>Move map to pick location</Text>
             <View style={styles.confirmActions}>
               <TouchableOpacity 
-                style={[styles.confirmBtn, { backgroundColor: theme.border }]} 
+                style={[styles.confirmBtn, { backgroundColor: theme.borderDefault }]} 
                 onPress={() => setIsSelectingLocation(false)}
               >
-                <Text style={[styles.confirmBtnText, { color: theme.text }]}>Cancel</Text>
+                <Text style={[styles.confirmBtnText, { color: theme.textPrimary }]}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity 
-                style={[styles.confirmBtn, { backgroundColor: theme.primary }]} 
+                style={[styles.confirmBtn, { backgroundColor: theme.accentRose }]} 
                 onPress={() => {
                   if (selectedCoords) {
+                    if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
                     setIsSelectingLocation(false);
                     setShowAddPlaceModal(true);
                   }
@@ -790,8 +920,6 @@ export const LocationScreen = () => {
               longitude: selectedCoords.longitude,
               radius: 200
             });
-            // Force sync for Android stability
-            locationService.syncSavedPlaces();
           }
         }}
       />
@@ -810,8 +938,21 @@ export const LocationScreen = () => {
         onLocate={zoomToPartner}
         onPing={handlePing}
         onRefresh={() => {
-          setIsRefreshing(true);
-          setTimeout(() => setIsRefreshing(false), 1500);
+          if (partner?.id) {
+            setIsRefreshing(true);
+            locationService.requestPartnerLocationUpdate(partner.id).finally(() => {
+              setTimeout(() => setIsRefreshing(false), 1000);
+            });
+          }
+        }}
+        onRing={() => {
+          console.log('[LocationScreen] Ring Button Pressed for partner:', partner?.id);
+          if (partner?.id) {
+            locationService.sendRingRequest(partner.id);
+            alertService.triggerAlert('info', 'Request Sent', `Ringing ${partnerName}'s phone...`);
+          } else {
+            console.warn('[LocationScreen] Cannot ring: Partner ID missing');
+          }
         }}
         partner={partner}
         partnerName={partnerName}
@@ -854,14 +995,95 @@ export const LocationScreen = () => {
           onToggleVoice={toggleVoice}
         />
       )}
+      {/* Incoming Ring Modal */}
+      <Modal visible={isRingingMe} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.ringModal, { backgroundColor: theme.bgSurface }]}>
+            <View style={[styles.ringIconCircle, { backgroundColor: theme.accentRose + '20' }]}>
+              <RefreshCcw size={40} color={theme.accentRose} />
+            </View>
+            <Text style={[styles.ringTitle, { color: theme.textPrimary }]}>{partnerName} is ringing your phone!</Text>
+            <Text style={[styles.ringSubtitle, { color: theme.textSecondary }]}>This is an urgent request to find your phone.</Text>
+            <TouchableOpacity 
+              style={[styles.stopRingBtn, { backgroundColor: '#FF3B30' }]} 
+              onPress={() => {
+                setIsRingingMe(false);
+                alertService.stopRemoteRing();
+                if (user?.uid) {
+                  locationService.clearRingRequest(user.uid);
+                }
+              }}
+            >
+              <Text style={styles.stopRingText}>Stop Alarm</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  map: { ...StyleSheet.absoluteFillObject },
-  overlay: { ...StyleSheet.absoluteFillObject, justifyContent: 'space-between' },
+  container: {
+    flex: 1,
+    backgroundColor: 'white',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  ringModal: {
+    width: '90%',
+    padding: 30,
+    borderRadius: 32,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 20,
+  },
+  ringIconCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  ringTitle: {
+    fontSize: 22,
+    fontWeight: '900',
+    textAlign: 'center',
+    marginBottom: 10,
+  },
+  ringSubtitle: {
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: 30,
+  },
+  stopRingBtn: {
+    width: '100%',
+    height: 56,
+    borderRadius: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#FF3B30',
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 5,
+  },
+  stopRingText: {
+    color: 'white',
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  map: {
+    width: SCREEN_WIDTH,
+    height: SCREEN_HEIGHT,
+  },overlay: { ...StyleSheet.absoluteFillObject, justifyContent: 'space-between' },
   topContainer: { paddingHorizontal: 20, paddingTop: 10 },
   topBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   iconButton: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 8, elevation: 3 },

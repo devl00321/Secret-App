@@ -8,6 +8,9 @@ import {
   Dimensions,
   Platform,
   StatusBar,
+  Modal,
+  TextInput,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -24,6 +27,8 @@ import {
   Sparkles,
   CloudRain,
   Thermometer,
+  X,
+  Send,
 } from 'lucide-react-native';
 import Animated, {
   FadeIn,
@@ -38,6 +43,7 @@ import Animated, {
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuthStore } from '../../src/store/useAuthStore';
 import { useChatStore } from '../../src/store/chat';
 import { useLocationStore } from '../../src/store/useLocationStore';
@@ -63,10 +69,51 @@ const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: numbe
 export default function PartnerProfileScreen() {
   const theme = useTheme();
   const router = useRouter();
-  const { partner, currentUserProfile, coupleId } = useAuthStore();
-  const { messages } = useChatStore();
+  const { user, partner, currentUserProfile, coupleId } = useAuthStore();
+  const { messages, sendMessage } = useChatStore();
   const { partnerLocation, userLocation, partnerWalkSafe } = useLocationStore();
   const [activities, setActivities] = useState<Activity[]>([]);
+  const [imageModalVisible, setImageModalVisible] = useState(false);
+  const [commentText, setCommentText] = useState('');
+  const [isHeartGlowing, setIsHeartGlowing] = useState(false);
+
+  useEffect(() => {
+    if (partner?.photoURL && partner?.id) {
+      AsyncStorage.getItem(`liked_photo_${partner.id}`).then(url => {
+        if (url === partner.photoURL) {
+          setIsHeartGlowing(true);
+        } else {
+          setIsHeartGlowing(false);
+        }
+      });
+    }
+  }, [partner?.photoURL, partner?.id]);
+
+  const handleSendComment = async () => {
+    if (!commentText.trim() || !coupleId || !user?.uid) return;
+    await sendMessage(commentText.trim(), user.uid, coupleId, undefined, 'reaction');
+    setCommentText('');
+    setImageModalVisible(false);
+    if (Platform.OS !== 'web') {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
+  };
+
+  const handleSendHeartReaction = async () => {
+    if (!coupleId || !user?.uid) return;
+    
+    if (isHeartGlowing) return; // Prevent spamming if already permanently liked
+    
+    setIsHeartGlowing(true);
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    }
+    await sendMessage('❤️', user.uid, coupleId, undefined, 'reaction');
+    
+    if (partner?.id && partner?.photoURL) {
+      AsyncStorage.setItem(`liked_photo_${partner.id}`, partner.photoURL);
+    }
+  };
   
   const partnerName = currentUserProfile?.partnerNickname || partner?.displayName || 'Your Love';
   
@@ -164,7 +211,7 @@ export default function PartnerProfileScreen() {
   }, []);
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.background }]}>
+    <View style={[styles.container, { backgroundColor: theme.bgPrimary }]}>
       <StatusBar barStyle="light-content" />
       
       {/* Background Hero Gradient */}
@@ -178,7 +225,7 @@ export default function PartnerProfileScreen() {
           />
         )}
         <LinearGradient
-          colors={[theme.primary + 'D9', theme.primary + '66', theme.background]}
+          colors={[theme.accentRose + 'D9', theme.accentRose + '66', theme.bgPrimary]}
           locations={[0, 0.5, 1]}
           style={StyleSheet.absoluteFill}
         />
@@ -207,6 +254,7 @@ export default function PartnerProfileScreen() {
           <Animated.View entering={FadeInDown.delay(200).springify()} style={styles.avatarWrapper}>
             <TouchableOpacity 
               activeOpacity={0.9}
+              onPress={() => partner?.photoURL && setImageModalVisible(true)}
               onLongPress={handleDigitalHandHold}
               delayLongPress={500}
             >
@@ -218,13 +266,13 @@ export default function PartnerProfileScreen() {
                     contentFit="cover"
                   />
                 ) : (
-                  <View style={[styles.avatarPlaceholder, { backgroundColor: theme.primarySoft }]}>
-                    <Heart size={48} color={theme.primary} fill={theme.primary} />
+                  <View style={[styles.avatarPlaceholder, { backgroundColor: theme.accentRoseSoft }]}>
+                    <Heart size={48} color={theme.accentRose} fill={theme.accentRose} />
                   </View>
                 )}
               </View>
             </TouchableOpacity>
-            <View style={[styles.statusIndicator, { backgroundColor: partner?.isOnline ? theme.success : '#AAA' }]} />
+            <View style={[styles.statusIndicator, { backgroundColor: partner?.isOnline ? theme.safeGreen : '#AAA' }]} />
           </Animated.View>
 
           <Animated.View entering={FadeInDown.delay(300).springify()} style={styles.nameContainer}>
@@ -294,8 +342,8 @@ export default function PartnerProfileScreen() {
 
           <Animated.View entering={FadeInDown.delay(700).springify()} style={styles.gridItem}>
             <BlurView intensity={30} tint="dark" style={styles.statusBox}>
-              <ShieldCheck size={20} color={partnerWalkSafe?.isActive ? theme.success : "white"} />
-              <Text style={[styles.statusValue, partnerWalkSafe?.isActive && { color: theme.success, fontSize: 18 }]} numberOfLines={1}>
+              <ShieldCheck size={20} color={partnerWalkSafe?.isActive ? theme.safeGreen : "white"} />
+              <Text style={[styles.statusValue, partnerWalkSafe?.isActive && { color: theme.safeGreen, fontSize: 18 }]} numberOfLines={1}>
                 {partnerWalkSafe?.isActive ? 'Active' : 'Protected'}
               </Text>
               <Text style={styles.statusLabel}>Luvv Guard</Text>
@@ -317,13 +365,21 @@ export default function PartnerProfileScreen() {
             <BlurView intensity={20} tint="dark" style={styles.memoryCard}>
               <Text style={styles.memoryLabel}>Latest Shared Memory</Text>
               <View style={styles.memoryContent}>
-                <View style={[styles.memoryIcon, { backgroundColor: theme.primary + '30' }]}>
+                <View style={[styles.memoryIcon, { backgroundColor: theme.accentRose + '30' }]}>
                   <Sparkles size={18} color="white" />
                 </View>
                 <View style={styles.memoryInfo}>
                   <Text style={styles.memoryTitle} numberOfLines={1}>{latestMemory.content}</Text>
                   <Text style={styles.memoryDate}>
-                    {new Date(latestMemory.timestamp).toLocaleDateString() || 'Recently'}
+                    {latestMemory.timestamp ? (() => {
+                      try {
+                        const date = new Date(latestMemory.timestamp);
+                        if (!isNaN(date.getTime())) {
+                          return date.toLocaleDateString();
+                        }
+                      } catch (e) {}
+                      return 'Recently';
+                    })() : 'Recently'}
                   </Text>
                 </View>
               </View>
@@ -348,13 +404,80 @@ export default function PartnerProfileScreen() {
                 <Heart size={42} color="white" fill="white" />
               </Animated.View>
             </LinearGradient>
-            <Text style={[styles.heartBtnText, { color: theme.text }]}>Send a heart</Text>
-            <Text style={[styles.heartBtnDesc, { color: theme.textLight }]}>Send a high-intensity pulse to {partnerName}</Text>
+            <Text style={[styles.heartBtnText, { color: theme.textPrimary }]}>Send a heart</Text>
+            <Text style={[styles.heartBtnDesc, { color: theme.textSecondary }]}>Send a high-intensity pulse to {partnerName}</Text>
           </TouchableOpacity>
         </Animated.View>
 
         <View style={styles.footerSpacing} />
       </ScrollView>
+
+      {/* Fullscreen Image Modal */}
+      <Modal
+        visible={imageModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setImageModalVisible(false)}
+      >
+        <KeyboardAvoidingView 
+          style={styles.modalBackground} 
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <TouchableOpacity 
+            style={styles.closeButton} 
+            onPress={() => setImageModalVisible(false)}
+          >
+            <X size={24} color="white" />
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={styles.modalCloseArea} 
+            activeOpacity={1} 
+            onPress={() => setImageModalVisible(false)}
+          >
+            {partner?.photoURL && (
+              <Image
+                source={{ uri: partner.photoURL }}
+                style={styles.fullScreenImage}
+                contentFit="contain"
+              />
+            )}
+          </TouchableOpacity>
+          
+          <View style={styles.reactionFooter}>
+            <TextInput
+              style={styles.reactionInput}
+              placeholder="Send a comment..."
+              placeholderTextColor="rgba(255,255,255,0.5)"
+              value={commentText}
+              onChangeText={setCommentText}
+              returnKeyType="send"
+              onSubmitEditing={handleSendComment}
+            />
+            <TouchableOpacity 
+              style={[styles.reactionBtn, commentText.trim().length > 0 && { backgroundColor: theme.accentRose }]}
+              onPress={handleSendComment}
+            >
+              <Send size={20} color={commentText.trim().length > 0 ? "white" : "rgba(255,255,255,0.5)"} />
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[
+                styles.heartReactionBtn, 
+                isHeartGlowing && { 
+                  shadowColor: '#FF3B30', 
+                  shadowOffset: { width: 0, height: 0 }, 
+                  shadowOpacity: 1, 
+                  shadowRadius: 15,
+                  elevation: 10,
+                  backgroundColor: 'rgba(255,59,48,0.2)'
+                }
+              ]}
+              onPress={handleSendHeartReaction}
+            >
+              <Heart size={28} color={isHeartGlowing ? '#FF3B30' : "white"} fill={isHeartGlowing ? '#FF3B30' : "transparent"} />
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -626,5 +749,75 @@ const styles = StyleSheet.create({
   },
   footerSpacing: {
     height: 100,
+  },
+  modalBackground: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.95)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalCloseArea: {
+    flex: 1,
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  fullScreenImage: {
+    width: '100%',
+    height: '100%',
+  },
+  closeButton: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 60 : 40,
+    right: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
+  },
+  reactionFooter: {
+    position: 'absolute',
+    bottom: Platform.OS === 'ios' ? 40 : 20,
+    left: 20,
+    right: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    zIndex: 10,
+  },
+  reactionInput: {
+    flex: 1,
+    height: 50,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderRadius: 25,
+    paddingHorizontal: 20,
+    color: 'white',
+    fontSize: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
+  reactionBtn: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
+  heartReactionBtn: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
   },
 });
