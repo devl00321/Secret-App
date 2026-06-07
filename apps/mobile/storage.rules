@@ -1,0 +1,41 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // FIXED: Now correctly checks the 'users' array in the couples document,
+    // which is the data structure actually used in the code.
+    function isPartnerOf(coupleId) {
+      return request.auth != null && (
+        coupleId.contains(request.auth.uid) || 
+        firestore.get(/databases/(default)/documents/couples/$(coupleId)).data.users.hasAny([request.auth.uid])
+      );
+    }
+
+    // Emergency Evidence Photos
+    match /emergency/{coupleId}/{userId}/{allPaths=**} {
+      allow read: if isPartnerOf(coupleId);
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Chat Media Photos/Videos
+    match /chat_media/{coupleId}/{allPaths=**} {
+      allow read, write: if isPartnerOf(coupleId);
+    }
+    
+    // Shared Timeline Media
+    match /timeline/{coupleId}/{allPaths=**} {
+      allow read, write: if isPartnerOf(coupleId);
+    }
+
+    // Profile Photos
+    match /profiles/{userId}/{allPaths=**} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Couples Shared Storage (Timeline, etc.)
+    match /couples/{coupleId}/{allPaths=**} {
+      allow read, write: if isPartnerOf(coupleId);
+    }
+  }
+}

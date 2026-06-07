@@ -1,5 +1,6 @@
 import React from 'react';
-import MapView, { Marker, Circle, PROVIDER_GOOGLE } from 'react-native-maps';
+import { View, Text, Platform, StyleSheet } from 'react-native';
+import MapView, { Marker, Circle, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import MapViewDirections from 'react-native-maps-directions';
 import { HeartMarker } from './HeartMarker';
 import { useTheme } from '../../theme';
@@ -13,7 +14,6 @@ import {
   Dumbbell, 
   MapPin 
 } from 'lucide-react-native';
-import { View, Text } from 'react-native';
 
 interface MapComponentProps {
   mapRef: React.RefObject<any>;
@@ -22,7 +22,7 @@ interface MapComponentProps {
   destination: any;
   GOOGLE_MAPS_APIKEY: string;
   onMapReady: () => void;
-  updateMetrics: (dist: number, dur: number) => void;
+  updateMetrics: (dist: number, dur: number, steps?: any[]) => void;
   theme: any;
   darkMapStyle: any;
   user: any;
@@ -30,7 +30,19 @@ interface MapComponentProps {
   distanceToPartner: number | null;
   etaToPartner: number | null;
   isSelectingLocation?: boolean;
-  onRegionChangeComplete?: (region: any) => void;
+  onRegionChangeComplete?: (region: any, gesture?: any) => void;
+  onMarkerPress?: () => void;
+  partnerName?: string;
+  myColor?: string;
+  partnerColor?: string;
+  walkSafePath?: { latitude: number; longitude: number }[];
+  partnerWalkSafePath?: { latitude: number; longitude: number }[];
+  lastCompletedPath?: { latitude: number; longitude: number }[] | null;
+  partnerLastCompletedPath?: { latitude: number; longitude: number }[] | null;
+  showPath?: boolean;
+  isNavigating?: boolean;
+  autoFollow?: boolean;
+  setAutoFollow?: (follow: boolean) => void;
 }
 
 const getPlaceIcon = (type: string, color: string) => {
@@ -45,6 +57,24 @@ const getPlaceIcon = (type: string, color: string) => {
     case 'gym': return <Dumbbell size={size} color={color} />;
     default: return <MapPin size={size} color={color} />;
   }
+};
+
+const hexToRgba = (hex: string, alpha: number) => {
+  if (!hex || typeof hex !== 'string') return hex;
+  const cleanHex = hex.replace('#', '');
+  let r = 0, g = 0, b = 0;
+  if (cleanHex.length === 3) {
+    r = parseInt(cleanHex[0] + cleanHex[0], 16);
+    g = parseInt(cleanHex[1] + cleanHex[1], 16);
+    b = parseInt(cleanHex[2] + cleanHex[2], 16);
+  } else if (cleanHex.length === 6) {
+    r = parseInt(cleanHex.substring(0, 2), 16);
+    g = parseInt(cleanHex.substring(2, 4), 16);
+    b = parseInt(cleanHex.substring(4, 6), 16);
+  } else {
+    return hex;
+  }
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 };
 
 export const MapComponent = React.memo(({
@@ -62,150 +92,461 @@ export const MapComponent = React.memo(({
   distanceToPartner,
   etaToPartner,
   isSelectingLocation,
-  onRegionChangeComplete
+  onRegionChangeComplete,
+  onMarkerPress,
+  partnerName,
+  myColor,
+  partnerColor,
+  walkSafePath,
+  partnerWalkSafePath,
+  lastCompletedPath,
+  partnerLastCompletedPath,
+  showPath,
+  isNavigating,
+  autoFollow = true,
+  setAutoFollow
 }: MapComponentProps) => {
+
+
+  // Helper to safely get coordinates from flattened or nested userLocation
+  const getCoords = (loc: any) => {
+    if (!loc) return null;
+    return {
+      latitude: loc.latitude ?? loc.coords?.latitude,
+      longitude: loc.longitude ?? loc.coords?.longitude,
+    };
+  };
+
+  const userCoords = getCoords(userLocation);
+  const partnerCoords = partnerLocation ? { latitude: partnerLocation.latitude, longitude: partnerLocation.longitude } : null;
+
+  React.useEffect(() => {
+    if (isNavigating && userCoords && mapRef.current) {
+      mapRef.current.animateCamera({
+        center: userCoords,
+        pitch: 60,
+        heading: userLocation?.coords?.heading || 0,
+        altitude: 1000,
+        zoom: 18,
+      }, { duration: 1000 });
+    } else if (!isNavigating && mapRef.current) {
+      mapRef.current.animateCamera({
+        pitch: 0,
+        heading: 0,
+      }, { duration: 1000 });
+    }
+  }, [isNavigating]);
+
+  React.useEffect(() => {
+    if (isNavigating && setAutoFollow) {
+      setAutoFollow(true);
+    }
+  }, [isNavigating]);
+
+  React.useEffect(() => {
+    if (isNavigating && userCoords && mapRef.current && autoFollow) {
+      mapRef.current.animateCamera({
+        center: userCoords,
+        pitch: 60,
+        heading: userLocation?.coords?.heading || 0,
+        zoom: 18,
+      }, { duration: 1000 });
+    }
+  }, [userLocation?.coords?.latitude, userLocation?.coords?.longitude, userLocation?.coords?.heading, isNavigating, autoFollow]);
+
+  const handleRegionChange = (region: any, gesture: any) => {
+    if (gesture?.isGesture && isNavigating && setAutoFollow) {
+      setAutoFollow(false);
+    }
+    if (onRegionChangeComplete) {
+      onRegionChangeComplete(region, gesture);
+    }
+  };
+
+  const validSavedPlaces = (savedPlaces?.filter(p => p && p.latitude && p.longitude) || [])
+    .filter((place, index, self) => index === self.findIndex((t) => t.id === place.id));
+
   return (
-    <View style={{ flex: 1 }}>
+    <View style={styles.flex}>
       <MapView
         ref={mapRef}
-        style={{ flex: 1 }}
-        provider={PROVIDER_GOOGLE}
+        style={styles.flex}
+        provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
         onMapReady={onMapReady}
-        onRegionChangeComplete={onRegionChangeComplete}
-      showsUserLocation={true}
-      showsMyLocationButton={false}
-      customMapStyle={theme.isDark ? darkMapStyle : []}
-      initialRegion={{
-        latitude: userLocation?.coords.latitude || 37.78825,
-        longitude: userLocation?.coords.longitude || -122.4324,
-        latitudeDelta: 0.01,
-        longitudeDelta: 0.01,
-      }}
-    >
-      {userLocation && (
-        <Marker
-          coordinate={{
-            latitude: userLocation.coords.latitude,
-            longitude: userLocation.coords.longitude,
-          }}
-          title="Me"
-          tracksViewChanges={false}
-          anchor={{ x: 0.5, y: 1 }}
-        >
-          <HeartMarker type="me" initial={user?.displayName?.[0] || 'M'} />
-        </Marker>
-      )}
-
-      {partnerLocation && (
-        <Marker
-          coordinate={{
-            latitude: partnerLocation.latitude,
-            longitude: partnerLocation.longitude,
-          }}
-          title="Partner"
-          tracksViewChanges={false}
-          anchor={{ x: 0.5, y: 1 }}
-        >
-          <HeartMarker 
-            type="partner" 
-            initial={partnerLocation.status === 'home' ? undefined : 'P'} 
-            batteryLevel={partnerLocation.batteryLevel}
-          />
-        </Marker>
-      )}
-
-      {userLocation && partnerLocation && GOOGLE_MAPS_APIKEY && GOOGLE_MAPS_APIKEY !== 'YOUR_GOOGLE_MAPS_API_KEY_HERE' && (
-        <MapViewDirections
-          origin={{
-            latitude: userLocation.coords.latitude,
-            longitude: userLocation.coords.longitude,
-          }}
-          destination={{
-            latitude: partnerLocation.latitude,
-            longitude: partnerLocation.longitude,
-          }}
-          apikey={GOOGLE_MAPS_APIKEY}
-          strokeWidth={4}
-          strokeColor={theme.primary}
-          lineDashPattern={[0]}
-          onReady={result => {
-            // Optimization: Only update global state if distance changes by more than 0.05km (50m)
-            // or ETA changes by more than 1 minute.
-            const distDiff = Math.abs((distanceToPartner || 0) - result.distance);
-            const etaDiff = Math.abs((etaToPartner || 0) - result.duration);
-            
-            if (distDiff > 0.05 || etaDiff > 1 || distanceToPartner === null) {
-              updateMetrics(result.distance, result.duration);
-            }
-          }}
-        />
-      )}
-
-      {savedPlaces?.filter(p => p && p.latitude && p.longitude).map((place) => (
-        <React.Fragment key={place.id}>
-          <Marker
-            coordinate={{
-              latitude: Number(place.latitude),
-              longitude: Number(place.longitude),
-            }}
-            title={place.name}
-            description={place.type}
-            anchor={{ x: 0.5, y: 1 }}
-            tracksViewChanges={false} // CRITICAL: Stop redundant re-renders
-          >
-            <View style={{ 
-              backgroundColor: theme.surface, 
-              padding: 6, 
-              borderRadius: 20, 
-              borderWidth: 2, 
-              borderColor: theme.primary,
-              shadowColor: '#000',
-              shadowOffset: { width: 0, height: 2 },
-              shadowOpacity: 0.25,
-              shadowRadius: 3.84,
-              elevation: 5,
-            }}>
-              {getPlaceIcon(place.type, theme.primary)}
-            </View>
-          </Marker>
+        onRegionChangeComplete={handleRegionChange}
+        showsUserLocation={true}
+        showsMyLocationButton={false}
+        userInterfaceStyle={theme.isDark ? 'dark' : 'light'}
+        customMapStyle={theme.isDark ? darkMapStyle : []}
+        initialRegion={{
+          latitude: partnerCoords?.latitude || userCoords?.latitude || 17.3850,
+          longitude: partnerCoords?.longitude || userCoords?.longitude || 78.4867,
+          latitudeDelta: 0.05,
+          longitudeDelta: 0.05,
+        }}
+      >
+        {/* PASS 1: Circles (Background layer) */}
+        {validSavedPlaces.map((place) => (
           <Circle
+            key={`circle-${place.id}`}
             center={{
               latitude: Number(place.latitude),
               longitude: Number(place.longitude),
             }}
             radius={Number(place.radius || 200)}
-            strokeColor={theme.primary + '80'}
-            fillColor={theme.primary + '20'}
+            strokeColor={hexToRgba(place.color || (place.isPartner ? '#8B7CFF' : theme.accentRose), 0.5)}
+            fillColor={hexToRgba(place.color || (place.isPartner ? '#8B7CFF' : theme.accentRose), 0.12)}
             zIndex={1}
             strokeWidth={1}
           />
-        </React.Fragment>
-      ))}
-    </MapView>
+        ))}
 
-    {isSelectingLocation && (
-      <View style={{
-        position: 'absolute',
-        top: '50%',
-        left: '50%',
-        marginLeft: -20,
-        marginTop: -40,
-        alignItems: 'center',
-        justifyContent: 'center',
-        pointerEvents: 'none'
-      }}>
-        <MapPin size={40} color={theme.primary} />
-        <View style={{ 
-          width: 6, 
-          height: 6, 
-          borderRadius: 3, 
-          backgroundColor: theme.primary,
-          marginTop: -3,
-          borderWidth: 1,
-          borderColor: 'white'
-        }} />
-      </View>
-    )}
+        {/* Only render markers if coordinates are valid to prevent Native Crashes */}
+        {userCoords && userCoords.latitude && (
+          <Marker
+            key="me-marker"
+            tracksViewChanges={false}
+            coordinate={userCoords}
+            title="Me"
+            anchor={{ x: 0.5, y: 1 }}
+            centerOffset={isNavigating ? { x: 0, y: 0 } : { x: -20, y: -42 }}
+            zIndex={100}
+            rotation={isNavigating ? (userLocation?.coords?.heading || 0) : 0}
+            flat={isNavigating} // Makes it tilt with the map in 3D
+          >
+            {isNavigating ? (
+              <View style={styles.navArrowContainer}>
+                {/* Outer Glow/Shadow */}
+                <View style={styles.navArrowHalo} />
+                {/* Main Arrow Body */}
+                <View style={[styles.navArrowMain, { borderBottomColor: theme.accentRose }]}>
+                  <View style={styles.navArrowInner} />
+                </View>
+                {/* Stylized tip to make it look less like a plain triangle */}
+                <View style={[styles.navArrowTip, { borderBottomColor: 'white' }]} />
+              </View>
+            ) : (
+              <HeartMarker type="me" initial={user?.displayName?.[0] || 'M'} color={myColor} />
+            )}
+          </Marker>
+        )}
+
+        {partnerCoords && partnerCoords.latitude && (
+          <Marker
+            key="partner-marker"
+            tracksViewChanges={false}
+            coordinate={partnerCoords}
+            title="Partner"
+            anchor={{ x: 0.5, y: 1 }}
+            centerOffset={{ x: -20, y: -42 }}
+            onPress={onMarkerPress}
+            zIndex={10}
+          >
+            <HeartMarker 
+              type="partner" 
+              initial={(partnerName || 'P')[0].toUpperCase()} 
+              batteryLevel={partnerLocation?.batteryLevel}
+              color={partnerColor}
+            />
+          </Marker>
+        )}
+
+        {/* GOLDEN BREADCRUMBS (Trace of last completed path) */}
+        {lastCompletedPath && lastCompletedPath.length > 1 && (
+          <Polyline
+            coordinates={lastCompletedPath}
+            strokeColor="#D4AF37AA" // Metallic Gold with alpha
+            strokeWidth={3}
+            lineDashPattern={[2, 10]} 
+            lineCap="round"
+            lineJoin="round"
+            geodesic={true}
+            zIndex={2}
+          />
+        )}
+
+        {/* PARTNER GOLDEN BREADCRUMBS */}
+        {partnerLastCompletedPath && partnerLastCompletedPath.length > 1 && (
+          <Polyline
+            coordinates={partnerLastCompletedPath}
+            strokeColor="#D4AF37AA" // Metallic Gold with alpha
+            strokeWidth={3}
+            lineDashPattern={[2, 10]} 
+            lineCap="round"
+            lineJoin="round"
+            geodesic={true}
+            zIndex={2}
+          />
+        )}
+
+        {/* LIVE PATH TRACKING (Breadcrumbs) */}
+        {walkSafePath && walkSafePath.length > 0 && (
+          <>
+            {/* Start Point Marker */}
+            <Circle
+              center={walkSafePath[0]}
+              radius={10}
+              fillColor={myColor || theme.accentRose}
+              strokeColor="white"
+              strokeWidth={2}
+              zIndex={4}
+            />
+            {walkSafePath.length > 1 && (
+              <Polyline
+                coordinates={walkSafePath}
+                strokeColor={(myColor || theme.accentRose) + 'AA'}
+                strokeWidth={4}
+                lineCap="round"
+                lineJoin="round"
+                geodesic={true}
+                zIndex={3}
+              />
+            )}
+          </>
+        )}
+
+        {partnerWalkSafePath && partnerWalkSafePath.length > 0 && (
+          <>
+            {/* Partner Start Point Marker */}
+            <Circle
+              center={partnerWalkSafePath[0]}
+              radius={10}
+              fillColor={partnerColor || '#8B7CFF'}
+              strokeColor="white"
+              strokeWidth={2}
+              zIndex={4}
+            />
+            {partnerWalkSafePath.length > 1 && (
+              <Polyline
+                coordinates={partnerWalkSafePath}
+                strokeColor={(partnerColor || '#8B7CFF') + 'AA'}
+                strokeWidth={4}
+                lineCap="round"
+                lineJoin="round"
+                geodesic={true}
+                zIndex={3}
+              />
+            )}
+          </>
+        )}
+
+        {userCoords && partnerCoords && GOOGLE_MAPS_APIKEY && GOOGLE_MAPS_APIKEY !== 'YOUR_GOOGLE_MAPS_API_KEY_HERE' && showPath && (
+          <MapViewDirections
+            origin={userCoords}
+            destination={partnerCoords}
+            apikey={GOOGLE_MAPS_APIKEY}
+            strokeWidth={4}
+            strokeColor={theme.accentRose + 'CC'}
+            mode={(distanceToPartner || 0) > 2 ? "DRIVING" : "WALKING"}
+            precision="high"
+            optimizeWaypoints={true}
+            lineCap="round"
+            lineJoin="round"
+            onReady={result => {
+              const distDiff = Math.abs((distanceToPartner || 0) - result.distance);
+              const etaDiff = Math.abs((etaToPartner || 0) - result.duration);
+              if (distDiff > 0.05 || etaDiff > 1 || distanceToPartner === null) {
+                updateMetrics(result.distance, result.duration, result.legs[0]?.steps);
+              }
+              
+              // Fit to both points if newly shown, but NOT when navigating
+              if (mapRef.current && showPath && !isNavigating) {
+                mapRef.current.fitToCoordinates([userCoords, partnerCoords], {
+                  edgePadding: { top: 100, right: 100, bottom: 100, left: 100 },
+                  animated: true,
+                });
+              }
+            }}
+          />
+        )}
+
+        {/* REACH SAFELY ROUTE (Remaining Path for User) */}
+        {userCoords && destination && GOOGLE_MAPS_APIKEY && GOOGLE_MAPS_APIKEY !== 'YOUR_GOOGLE_MAPS_API_KEY_HERE' && (
+          <MapViewDirections
+            origin={userCoords}
+            destination={{ latitude: destination.latitude, longitude: destination.longitude }}
+            apikey={GOOGLE_MAPS_APIKEY}
+            strokeWidth={3}
+            strokeColor={(myColor || theme.accentRose) + 'CC'}
+            mode="WALKING"
+            lineCap="round"
+            lineJoin="round"
+            precision="high"
+          />
+        )}
+
+        {/* REACH SAFELY ROUTE (Remaining Path for Partner) */}
+        {partnerCoords && partnerWalkSafePath && GOOGLE_MAPS_APIKEY && GOOGLE_MAPS_APIKEY !== 'YOUR_GOOGLE_MAPS_API_KEY_HERE' && (
+          <MapViewDirections
+            origin={partnerCoords}
+            destination={partnerWalkSafePath[partnerWalkSafePath.length - 1]} 
+            apikey={GOOGLE_MAPS_APIKEY}
+            strokeWidth={3}
+            strokeColor={(partnerColor || '#8B7CFF') + 'CC'}
+            mode="WALKING"
+            lineCap="round"
+            lineJoin="round"
+            precision="high"
+          />
+        )}
+
+        {/* PASS 2: Place Markers (Top layer) */}
+        {validSavedPlaces.map((place) => (
+          <Marker
+            key={`place-${place.id}`}
+            tracksViewChanges={false}
+            coordinate={{
+              latitude: Number(place.latitude),
+              longitude: Number(place.longitude),
+            }}
+            anchor={{ x: 0.5, y: 0.5 }}
+            centerOffset={{ x: 0, y: 0 }}
+            zIndex={20}
+          >
+            <View style={styles.placeMarker}>
+              <View style={[styles.placeTag, { backgroundColor: theme.bgSurface, borderColor: theme.borderDefault }]}>
+                <Text style={[styles.placeText, { color: theme.textPrimary }]} numberOfLines={1}>
+                  {place.name}
+                </Text>
+              </View>
+              <View style={[styles.placeIcon, { backgroundColor: theme.bgSurface, borderColor: place.color || (place.isPartner ? '#8B7CFF' : theme.accentRose) }]}>
+                {getPlaceIcon(place.type, place.color || (place.isPartner ? '#8B7CFF' : theme.accentRose))}
+              </View>
+            </View>
+          </Marker>
+        ))}
+      </MapView>
+
+      {isSelectingLocation && (
+        <View style={styles.selectorContainer}>
+          <MapPin size={40} color={theme.accentRose} />
+          <View style={[styles.selectorDot, { backgroundColor: theme.accentRose }]} />
+        </View>
+      )}
     </View>
   );
+});
+MapComponent.displayName = 'MapComponent';
+
+
+const styles = StyleSheet.create({
+  flex: { flex: 1 },
+  placeMarker: { 
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  placeTag: {
+    position: 'absolute',
+    bottom: 42, // Adjusted for the 40x40 container
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    minWidth: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 3,
+  },
+  placeText: { 
+    fontSize: 9, 
+    fontWeight: '900', 
+    textTransform: 'uppercase'
+  },
+  placeIcon: { 
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 16, 
+    borderWidth: 2, 
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  selectorContainer: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    marginLeft: -20,
+    marginTop: -40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    pointerEvents: 'none'
+  },
+  selectorDot: { 
+    width: 6, 
+    height: 6, 
+    borderRadius: 3, 
+    marginTop: -3,
+    borderWidth: 1,
+    borderColor: 'white'
+  },
+  navArrowContainer: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  navArrowHalo: {
+    position: 'absolute',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.4)',
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.8)',
+  },
+  navArrowMain: {
+    width: 0,
+    height: 0,
+    backgroundColor: 'transparent',
+    borderStyle: 'solid',
+    borderLeftWidth: 10,
+    borderRightWidth: 10,
+    borderBottomWidth: 26,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    transform: [{ scaleY: 1.4 }],
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  navArrowInner: {
+    position: 'absolute',
+    top: 2,
+    left: -8,
+    width: 0,
+    height: 0,
+    backgroundColor: 'transparent',
+    borderStyle: 'solid',
+    borderLeftWidth: 8,
+    borderRightWidth: 8,
+    borderBottomWidth: 22,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderBottomColor: 'rgba(255,255,255,0.3)',
+  },
+  navArrowTip: {
+    position: 'absolute',
+    bottom: 12,
+    width: 0,
+    height: 0,
+    backgroundColor: 'transparent',
+    borderStyle: 'solid',
+    borderLeftWidth: 3,
+    borderRightWidth: 3,
+    borderBottomWidth: 6,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    transform: [{ rotate: '180deg' }],
+  },
 });

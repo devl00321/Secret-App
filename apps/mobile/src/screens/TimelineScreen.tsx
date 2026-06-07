@@ -1,154 +1,223 @@
-import { StyleSheet, View, Text, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { StyleSheet, View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Alert, Modal, TextInput, KeyboardAvoidingView, Platform, ScrollView as FlatScrollView } from 'react-native';
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Header } from '../components/Header';
-import { Card } from '../components/Card';
-import { Plus, Image as ImageIcon, FileText, Camera } from 'lucide-react-native';
+import { TimelineItem } from '../components/ui/TimelineItem';
+import { 
+  Plus,
+  MapPin, 
+  ShieldAlert, 
+  Heart, 
+  Navigation2,
+  CalendarDays,
+  Camera,
+  FileText
+} from 'lucide-react-native';
 import { useTheme } from '../theme';
+import { useAuthStore } from '../store/useAuthStore';
+import { activityService, Activity } from '../services/activityService';
+import { imageService } from '../services/imageService';
+import { format } from 'date-fns';
+import { BlurView as ExpoBlur } from 'expo-blur';
 
 export const TimelineScreen = () => {
   const theme = useTheme();
-  const memories = [
-    {
-      id: '1',
-      type: 'image',
-      content: 'Our weekend getaway was amazing! 🏔️',
-      date: 'Oct 24, 2023',
-      imageUrl: 'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=400&q=80',
-    },
-    {
-      id: '2',
-      type: 'note',
-      content: 'Dont forget to pick up the groceries on your way home. Love you!',
-      date: 'Oct 23, 2023',
-    },
-    {
-      id: '3',
-      type: 'image',
-      content: 'Coffee dates are the best ☕️',
-      date: 'Oct 22, 2023',
-      imageUrl: 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=400&q=80',
+  const { coupleId, user, sharedSecret } = useAuthStore();
+  const [activities, setActivities] = useState<Activity[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isUploading, setIsUploading] = useState(false);
+  const [captionModalVisible, setCaptionModalVisible] = useState(false);
+  const [pendingImage, setPendingImage] = useState<string | null>(null);
+  const [caption, setCaption] = useState('');
+  const [modalType, setModalType] = useState<'photo' | 'note'>('photo');
+
+  useEffect(() => {
+    if (!coupleId) return;
+    const unsubscribe = activityService.subscribeToActivities(coupleId, (data) => {
+      setActivities(data);
+      setLoading(false);
+    });
+    return () => unsubscribe();
+  }, [coupleId]);
+
+  useEffect(() => {
+    if (sharedSecret && activities.length > 0) {
+      const reDecrypt = async () => {
+        const decrypted = await activityService.decryptActivities(activities, sharedSecret, coupleId || undefined);
+        setActivities(decrypted);
+      };
+      reDecrypt();
     }
-  ];
+  }, [sharedSecret]);
+
+  const handleAddPhoto = async () => {
+    try {
+      const compressedUri = await imageService.pickAndCompressImage();
+      if (!compressedUri) return;
+      setPendingImage(compressedUri);
+      setModalType('photo');
+      setCaption('');
+      setCaptionModalVisible(true);
+    } catch (err) {
+      console.error('[TimelineScreen] Failed to pick photo:', err);
+    }
+  };
+
+  const handleShareNote = () => {
+    setPendingImage(null);
+    setModalType('note');
+    setCaption('');
+    setCaptionModalVisible(true);
+  };
+
+  const handleAddPress = () => {
+    Alert.alert(
+      "Create Post",
+      "Choose what you want to share",
+      [
+        { text: "Photo / Video", onPress: handleAddPhoto },
+        { text: "Text Note", onPress: handleShareNote },
+        { text: "Cancel", style: "cancel" }
+      ],
+      { cancelable: true }
+    );
+  };
+
+  const handleConfirmUpload = async () => {
+    setCaptionModalVisible(false);
+    setIsUploading(true);
+    try {
+      if (modalType === 'photo' && pendingImage) {
+        const downloadUrl = await imageService.uploadImage(pendingImage, 'timeline');
+        if (downloadUrl) {
+          await activityService.logActivity('memory', caption || 'Shared a new photo! 📸', { imageUrl: downloadUrl });
+        }
+      } else if (modalType === 'note') {
+        await activityService.logActivity('memory', caption || 'Pinned a special note 📝');
+      }
+    } finally {
+      setIsUploading(false);
+      setPendingImage(null);
+      setCaption('');
+    }
+  };
+
+  const getActivityIcon = (item: Activity) => {
+    switch (item.type) {
+      case 'travel': return Navigation2;
+      case 'sos': return ShieldAlert;
+      case 'anniversary': return Heart;
+      case 'location_saved': return MapPin;
+      case 'memory': return item.imageUrl ? Camera : FileText;
+      default: return FileText;
+    }
+  };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.bgPrimary }]}>
       <Header 
-        title="Shared Timeline" 
+        title="Timeline" 
         showBack 
+        transparent 
         rightElement={
-          <TouchableOpacity style={styles.addButton}>
-            <Plus color="white" size={24} />
+          <TouchableOpacity 
+            onPress={handleAddPress} 
+            style={{ padding: 8, marginRight: -8 }}
+            hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+          >
+            {isUploading ? (
+               <ActivityIndicator size="small" color={theme.textPrimary} />
+            ) : (
+               <Plus size={26} color={theme.textPrimary} strokeWidth={2.5} />
+            )}
           </TouchableOpacity>
         }
       />
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {memories.map((item) => (
-          <Card key={item.id} style={[styles.memoryCard, { backgroundColor: theme.surface }]}>
-            <Text style={[styles.date, { color: theme.textLight }]}>{item.date}</Text>
-            {item.imageUrl && (
-              <Image source={{ uri: item.imageUrl }} style={styles.image} contentFit="cover" />
-            )}
-            <Text style={[styles.content, { color: theme.text }]}>{item.content}</Text>
-            <View style={[styles.footer, { borderTopColor: theme.border }]}>
-              <View style={[styles.avatarMini, { backgroundColor: theme.primarySoft }]} />
-              <Text style={[styles.author, { color: theme.textLight }]}>Shared by you</Text>
-            </View>
-          </Card>
-        ))}
-      </ScrollView>
+      
+      {loading ? (
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color={theme.accentRose} />
+        </View>
+      ) : activities.length === 0 ? (
+        <View style={styles.center}>
+          <View style={[styles.emptyIconBox, { backgroundColor: theme.accentRoseSoft }]}>
+            <CalendarDays size={40} color={theme.accentRose} />
+          </View>
+          <Text style={[styles.emptyTitle, { color: theme.textPrimary }]}>No memories yet</Text>
+          <Text style={[styles.emptySubtitle, { color: theme.textSecondary }]}>
+            Your shared journey starts here. Post a photo or note to capture the moment!
+          </Text>
+        </View>
+      ) : (
+        <FlatScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+          {activities.map((item, index) => {
+            const isLast = index === activities.length - 1;
+            return (
+              <TimelineItem 
+                key={item.id}
+                icon={getActivityIcon(item)}
+                title={item.content}
+                timestamp={format(item.timestamp, 'MMMM do, yyyy')}
+                isLast={isLast}
+              />
+            );
+          })}
+        </FlatScrollView>
+      )}
 
-      <View style={[styles.fabContainer, { backgroundColor: theme.surface, borderColor: theme.border, borderWidth: theme.isDark ? 1 : 0 }]}>
-        <TouchableOpacity style={styles.fabItem}>
-          <Camera size={24} color={theme.primary} />
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.fabItem}>
-          <FileText size={24} color={theme.primary} />
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.fabItem}>
-          <ImageIcon size={24} color={theme.primary} />
-        </TouchableOpacity>
-      </View>
+      <Modal visible={captionModalVisible} transparent animationType="slide" onRequestClose={() => setCaptionModalVisible(false)}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
+          <ExpoBlur intensity={80} tint={theme.isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
+          <View style={[styles.modalCard, { backgroundColor: theme.bgSurface }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>
+                {modalType === 'photo' ? 'New Memory' : 'New Note'}
+              </Text>
+              <TouchableOpacity onPress={() => setCaptionModalVisible(false)}>
+                <Text style={{ color: theme.textTertiary, fontFamily: 'DMSans_700Bold' }}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {pendingImage && (
+                <View style={styles.previewContainer}>
+                  <Image source={{ uri: pendingImage }} style={styles.previewImage} contentFit="cover" />
+                </View>
+              )}
+              <TextInput
+                style={[styles.input, { color: theme.textPrimary, backgroundColor: theme.bgElevated, borderColor: theme.borderDefault }]}
+                placeholder="Write something special..."
+                placeholderTextColor={theme.textTertiary}
+                multiline
+                autoFocus
+                value={caption}
+                onChangeText={setCaption}
+              />
+              <TouchableOpacity style={[styles.shareBtn, { backgroundColor: theme.textPrimary }]} onPress={handleConfirmUpload}>
+                <Text style={[styles.shareBtnText, { color: theme.bgPrimary }]}>Share to Timeline</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: 20,
-    paddingBottom: 100,
-  },
-  addButton: {
-    backgroundColor: '#FF6B6B',
-    borderRadius: 20,
-    width: 36,
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  memoryCard: {
-    marginBottom: 20,
-  },
-  date: {
-    fontSize: 12,
-    color: '#888',
-    marginBottom: 12,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-  },
-  image: {
-    width: '100%',
-    height: 200,
-    borderRadius: 15,
-    marginBottom: 15,
-  },
-  content: {
-    fontSize: 16,
-    color: '#333',
-    lineHeight: 24,
-    marginBottom: 15,
-  },
-  footer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderTopWidth: 1,
-    borderTopColor: '#F0F0F0',
-    paddingTop: 12,
-  },
-  avatarMini: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: '#FFE5E5',
-    marginRight: 8,
-  },
-  author: {
-    fontSize: 12,
-    color: '#666',
-    fontWeight: '500',
-  },
-  fabContainer: {
-    position: 'absolute',
-    bottom: 30,
-    right: 20,
-    flexDirection: 'row',
-    borderRadius: 30,
-    padding: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    elevation: 5,
-  },
-  fabItem: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginHorizontal: 4,
-  },
+  container: { flex: 1 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40 },
+  scrollContent: { padding: 24, paddingBottom: 150 },
+  emptyIconBox: { width: 80, height: 80, borderRadius: 30, alignItems: 'center', justifyContent: 'center', marginBottom: 20 },
+  emptyTitle: { fontFamily: 'PlayfairDisplay_700Bold', fontSize: 20, marginBottom: 8 },
+  emptySubtitle: { fontFamily: 'DMSans_400Regular', fontSize: 14, textAlign: 'center', lineHeight: 20 },
+  modalOverlay: { flex: 1, justifyContent: 'flex-end' },
+  modalCard: { width: '100%', borderTopLeftRadius: 36, borderTopRightRadius: 36, padding: 24, paddingTop: 16, maxHeight: '85%' },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
+  modalTitle: { fontFamily: 'PlayfairDisplay_700Bold', fontSize: 22, letterSpacing: -0.5 },
+  previewContainer: { width: '100%', aspectRatio: 1, borderRadius: 24, overflow: 'hidden', marginBottom: 20 },
+  previewImage: { width: '100%', height: '100%' },
+  input: { width: '100%', minHeight: 120, borderRadius: 24, padding: 18, fontFamily: 'DMSans_500Medium', fontSize: 16, borderWidth: 1, textAlignVertical: 'top', marginBottom: 24 },
+  shareBtn: { width: '100%', height: 56, borderRadius: 24, justifyContent: 'center', alignItems: 'center', marginBottom: 30 },
+  shareBtnText: { fontFamily: 'DMSans_700Bold', fontSize: 16 },
 });

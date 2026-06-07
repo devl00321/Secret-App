@@ -40,18 +40,18 @@ export const Button = ({
 
   const getButtonStyle = () => {
     switch (variant) {
-      case 'secondary': return { backgroundColor: theme.secondary };
-      case 'outline': return { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: theme.primary };
+      case 'secondary': return { backgroundColor: '#8B7CFF' };
+      case 'outline': return { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: theme.accentRose };
       case 'danger': return { backgroundColor: '#FF4747' };
       case 'ghost': return { backgroundColor: 'transparent' };
-      default: return { backgroundColor: theme.primary };
+      default: return { backgroundColor: theme.accentRose };
     }
   };
 
   const getTextStyle = () => {
     switch (variant) {
-      case 'outline': return { color: theme.primary };
-      case 'ghost': return { color: theme.textLight };
+      case 'outline': return { color: theme.accentRose };
+      case 'ghost': return { color: theme.textSecondary };
       default: return { color: '#FFFFFF' };
     }
   };
@@ -78,7 +78,7 @@ export const Button = ({
   return (
     <Animated.View style={[animatedStyle, style]}>
       <TouchableOpacity 
-        style={[styles.base, { borderRadius: theme.radius.lg, flex: style && (style as any).flex ? 1 : undefined }, getButtonStyle(), (disabled || loading) && styles.disabled]}
+        style={[styles.base, { borderRadius: 16, flex: style && (style as any).flex ? 1 : undefined }, getButtonStyle(), (disabled || loading) && styles.disabled]}
         onPress={handlePress}
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
@@ -86,7 +86,7 @@ export const Button = ({
         activeOpacity={1}
       >
         {loading ? (
-          <ActivityIndicator color={variant === 'outline' || variant === 'ghost' ? theme.primary : 'white'} />
+          <ActivityIndicator color={variant === 'outline' || variant === 'ghost' ? theme.accentRose : 'white'} />
         ) : (
           <>
             {icon && <View style={styles.iconContainer}>{icon}</View>}

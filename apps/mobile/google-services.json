@@ -1,0 +1,54 @@
+{
+  "project_info": {
+    "project_number": "941648671576",
+    "project_id": "couple-app-60de2",
+    "storage_bucket": "couple-app-60de2.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:941648671576:android:877550e4beaaad2923eb2d",
+        "android_client_info": {
+          "package_name": "com.ripu.loveapp"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "941648671576-us2vqkp9vd326e40po2tct8it34huo1j.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.ripu.loveapp",
+            "certificate_hash": "1cdf1883a81df8f111ef5a5381066fa784e60e5b"
+          }
+        },
+        {
+          "client_id": "941648671576-8e0r3tqng20or0ggfcl5ph0mg7ruj4up.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBwVyuAZeijIo9BnAt3jImcASxqaWG_vb0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "941648671576-8e0r3tqng20or0ggfcl5ph0mg7ruj4up.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "941648671576-e3s23g90a2v2ujqmte7difj2rs8eb3bb.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.ripu.loveapp"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

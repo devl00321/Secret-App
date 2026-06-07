@@ -12,14 +12,28 @@
     "typecheck": "npm run typecheck --workspace mobile && npm run typecheck --workspace server && npm run typecheck --workspace shared",
     "test": "npm run lint && npm run typecheck",
     "dev:mobile": "npm run start --workspace mobile",
-    "dev:server": "npm run dev --workspace server"
+    "dev:server": "npm run dev --workspace server",
+    "android": "expo run:android",
+    "ios": "expo run:ios"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "ajv": "^8.12.0"
+    "@google/generative-ai": "^0.24.1",
+    "@react-native-firebase/app": "^24.0.0",
+    "@react-native-firebase/app-check": "^24.0.0",
+    "@react-native-firebase/auth": "^24.0.0",
+    "@react-native-firebase/firestore": "^24.0.0",
+    "@react-native-firebase/messaging": "^24.0.0",
+    "@react-native-firebase/storage": "^24.0.0",
+    "ajv": "^8.12.0",
+    "expo": "~54.0.34",
+    "react": "19.1.0",
+    "react-native": "0.81.5",
+    "react-native-maps": "^1.27.2",
+    "react-native-svg": "15.12.1"
   },
   "overrides": {
     "xmldom": "npm:@xmldom/xmldom@^0.9.10",
@@ -33,6 +47,7 @@
     }
   },
   "devDependencies": {
+    "react-native-svg": "15.12.1",
     "react-native-worklets": "^0.5.1"
   }
 }

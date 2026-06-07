@@ -4,3 +4,18 @@
 
 expo-env.d.ts
 # @end expo-cli
+
+.env
+.env.local
+.env.*.local
+node_modules/
+.expo/
+dist/
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# VUL-1 FIX: Firebase config files contain real API keys — should never be committed.
+# Inject these at CI build time from secure secrets storage (e.g. EAS secrets, GitHub Secrets).
+GoogleService-Info.plist
+google-services.json

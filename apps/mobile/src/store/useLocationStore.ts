@@ -12,6 +12,19 @@ export interface SavedPlace {
   radius: number; // in meters
 }
 
+export type WalkSafeStatus = 'traveling' | 'warning' | 'overdue' | 'arrived' | 'cancelled';
+
+export interface WalkSafeState {
+  isActive: boolean;
+  destination: SavedPlace | null;
+  startTime: number | null;
+  deadline: number | null;
+  durationMinutes: number;
+  status: WalkSafeStatus;
+  lastCheckDistance: number | null; // meters
+  path?: { latitude: number; longitude: number }[];
+}
+
 interface LocationState {
   userLocation: Location.LocationObject | null;
   partnerLocation: {
@@ -30,6 +43,44 @@ interface LocationState {
   distanceToPartner: number | null;
   etaToPartner: number | null; // in minutes
   savedPlaces: SavedPlace[];
+  partnerSavedPlaces: SavedPlace[];
+  partnerTrip: {
+    isActive: boolean;
+    destination: { latitude: number; longitude: number; name?: string } | null;
+  } | null;
+  partnerWalkSafe: {
+    isActive: boolean;
+    destinationName: string | null;
+    deadline: number | null;
+    status: WalkSafeStatus;
+    lastCheckDistance: number | null;
+    path?: { latitude: number; longitude: number }[];
+  } | null;
+  partnerLastCompletedPath: { latitude: number; longitude: number }[] | null;
+  partnerLastCompletedTime: number | null;
+  partnerLastSafePlaceId: string | null; // Tracks last geofenced safe place for partner to detect leaving/entering
+  userLastSafePlaceId: string | null; // Tracks sender's own last safe place
+  activeSos: {
+    isActive: boolean;
+    triggeredBy: string | null;
+    startTime: number | null;
+    location: { latitude: number; longitude: number } | null;
+    isSilent?: boolean;
+  } | null;
+  isSirenMuted: boolean;
+  walkSafe: WalkSafeState | null;
+  lastCompletedPath: { latitude: number; longitude: number }[] | null;
+  lastCompletedTime: number | null;
+  incomingPing: { from: string; timestamp: number; type: string } | null;
+  safetyInsight: { 
+    message: string; 
+    status: 'safe' | 'warning' | 'alert'; 
+    suggestion?: string;
+    reason?: string;
+  } | null;
+  navigationSteps: any[] | null;
+  isNavigating: boolean;
+  isVoiceEnabled: boolean;
 
   // Actions
   setUserLocation: (location: Location.LocationObject | null) => void;
@@ -41,11 +92,30 @@ interface LocationState {
   addSavedPlace: (place: Omit<SavedPlace, 'id'>) => void;
   removeSavedPlace: (id: string) => void;
   updateSavedPlace: (id: string, place: Partial<SavedPlace>) => void;
+  setPartnerSavedPlaces: (places: SavedPlace[]) => void;
+  setPartnerLastSafePlaceId: (id: string | null) => void;
+  setUserLastSafePlaceId: (id: string | null) => void;
+  setPartnerTrip: (trip: { isActive: boolean; destination: any } | null) => void;
+  setPartnerWalkSafe: (walkSafe: any) => void;
+  setActiveSos: (sos: LocationState['activeSos']) => void;
+  setSirenMuted: (muted: boolean) => void;
+  setSavedPlaces: (places: SavedPlace[]) => void;
+  startWalkSafe: (destination: SavedPlace, durationMinutes: number) => void;
+  updateWalkSafe: (update: Partial<WalkSafeState>) => void;
+  addToWalkSafePath: (lat: number, lng: number) => void;
+  endWalkSafe: (status: 'arrived' | 'cancelled') => void;
+  extendWalkSafe: (extraMinutes: number) => void;
+  setIncomingPing: (ping: LocationState['incomingPing']) => void;
+  setSafetyInsight: (insight: LocationState['safetyInsight']) => void;
+  setAiInsight: (insight: any) => void; // Alias for setSafetyInsight
+  setNavigationSteps: (steps: any[] | null) => void;
+  setIsNavigating: (isNavigating: boolean) => void;
+  toggleVoice: () => void;
 }
 
 export const useLocationStore = create<LocationState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       userLocation: null,
       partnerLocation: null,
       isSharing: false,
@@ -55,25 +125,135 @@ export const useLocationStore = create<LocationState>()(
       distanceToPartner: null,
       etaToPartner: null,
       savedPlaces: [],
+      partnerSavedPlaces: [],
+      partnerTrip: null,
+      partnerWalkSafe: null,
+      activeSos: null,
+      isSirenMuted: false,
+      walkSafe: null,
+      lastCompletedPath: null,
+      lastCompletedTime: null,
+      partnerLastCompletedPath: null,
+      partnerLastCompletedTime: null,
+      partnerLastSafePlaceId: null,
+      userLastSafePlaceId: null,
+      incomingPing: null,
+      safetyInsight: null,
+      navigationSteps: null,
+      isNavigating: false,
+      isVoiceEnabled: true,
 
       setUserLocation: (userLocation) => set({ userLocation }),
-      setPartnerLocation: (partnerLocation) => set({ partnerLocation }),
+      setPartnerLocation: (partnerLocation) => {
+        if (partnerLocation && partnerLocation.batteryLevel !== undefined) {
+          partnerLocation.batteryLevel = Math.max(0, partnerLocation.batteryLevel);
+        }
+        set({ partnerLocation });
+      },
       setSharing: (isSharing) => set({ isSharing }),
       setSharingDuration: (sharingDuration) => set({ sharingDuration }),
       setTripActive: (isTripActive, destination) => set({ isTripActive, destination: destination || null }),
       updateMetrics: (distanceToPartner, etaToPartner) => set({ distanceToPartner, etaToPartner }),
       
-      addSavedPlace: (place) => set((state) => ({
-        savedPlaces: [...state.savedPlaces, { ...place, id: Math.random().toString(36).substring(7) }]
+      setPartnerSavedPlaces: (partnerSavedPlaces) => set({ partnerSavedPlaces }),
+      setPartnerLastSafePlaceId: (partnerLastSafePlaceId) => set({ partnerLastSafePlaceId }),
+      setUserLastSafePlaceId: (userLastSafePlaceId) => set({ userLastSafePlaceId }),
+      setPartnerTrip: (partnerTrip) => set({ partnerTrip }),
+      setPartnerWalkSafe: (partnerWalkSafe) => set({ partnerWalkSafe }),
+      setActiveSos: (activeSos) => set({ activeSos }),
+      setSirenMuted: (isSirenMuted) => set({ isSirenMuted }),
+      setSavedPlaces: (savedPlaces) => set({ savedPlaces }),
+      setIncomingPing: (incomingPing) => set({ incomingPing }),
+      setSafetyInsight: (safetyInsight) => set({ safetyInsight }),
+      setAiInsight: (safetyInsight) => set({ safetyInsight }),
+      setNavigationSteps: (navigationSteps) => set({ navigationSteps }),
+      setIsNavigating: (isNavigating) => set({ isNavigating }),
+      toggleVoice: () => set((state) => ({ isVoiceEnabled: !state.isVoiceEnabled })),
+
+      startWalkSafe: (destination, durationMinutes) => {
+        const now = Date.now();
+        set({
+          walkSafe: {
+            isActive: true,
+            destination,
+            startTime: now,
+            deadline: now + durationMinutes * 60 * 1000,
+            durationMinutes,
+            status: 'traveling',
+            lastCheckDistance: null,
+            path: get().userLocation ? [{ 
+              latitude: get().userLocation!.coords.latitude, 
+              longitude: get().userLocation!.coords.longitude 
+            }] : []
+          },
+          // Also activate the generic trip for the map dashboard
+          isTripActive: true,
+          destination: {
+            latitude: destination.latitude,
+            longitude: destination.longitude,
+            name: destination.name,
+          },
+        });
+      },
+
+      updateWalkSafe: (update) => set((state) => ({
+        walkSafe: state.walkSafe ? { ...state.walkSafe, ...update } : null,
       })),
+
+      addToWalkSafePath: (lat, lng) => set((state) => {
+        if (!state.walkSafe?.isActive) return state;
+        
+        const currentPath = state.walkSafe.path || [];
+        // Only add if it's different from the last point to avoid duplicates
+        const lastPoint = currentPath[currentPath.length - 1];
+        if (lastPoint && lastPoint.latitude === lat && lastPoint.longitude === lng) return state;
+
+        const newPath = [...currentPath, { latitude: lat, longitude: lng }].slice(-100); // Cap at 100 points
+        return {
+          walkSafe: {
+            ...state.walkSafe,
+            path: newPath
+          }
+        };
+      }),
+
+      endWalkSafe: (status) => set((state) => ({
+        lastCompletedPath: status === 'arrived' ? (state.walkSafe?.path || null) : state.lastCompletedPath,
+        lastCompletedTime: status === 'arrived' ? Date.now() : state.lastCompletedTime,
+        walkSafe: null,
+        isTripActive: false,
+        destination: null,
+      })),
+
+      extendWalkSafe: (extraMinutes) => set((state) => ({
+        walkSafe: state.walkSafe ? {
+          ...state.walkSafe,
+          deadline: (state.walkSafe.deadline || Date.now()) + extraMinutes * 60 * 1000,
+          status: 'traveling' as const,
+        } : null,
+      })),
+
+      addSavedPlace: (place) => {
+        const newPlace = { ...place, id: Math.random().toString(36).substring(7) };
+        const newPlaces = [...get().savedPlaces, newPlace];
+        set({ savedPlaces: newPlaces });
+        // Import and call sync service with the fresh data
+        import('../services/locationService').then(m => m.locationService.syncSavedPlaces(newPlaces));
+      },
       
-      removeSavedPlace: (id) => set((state) => ({
-        savedPlaces: state.savedPlaces.filter(p => p.id !== id)
-      })),
+      removeSavedPlace: (id) => {
+        set((state) => ({
+          savedPlaces: state.savedPlaces.filter(p => p.id !== id)
+        }));
+        import('../services/locationService').then(m => m.locationService.syncSavedPlaces());
+      },
       
-      updateSavedPlace: (id, place) => set((state) => ({
-        savedPlaces: state.savedPlaces.map(p => p.id === id ? { ...p, ...place } : p)
-      })),
+      updateSavedPlace: (id, place) => {
+        set((state) => ({
+          savedPlaces: state.savedPlaces.map(p => p.id === id ? { ...p, ...place } : p)
+        }));
+        import('../services/locationService').then(m => m.locationService.syncSavedPlaces());
+      },
     }),
     {
       name: 'location-storage',
@@ -81,7 +261,14 @@ export const useLocationStore = create<LocationState>()(
       partialize: (state) => ({ 
         savedPlaces: state.savedPlaces,
         sharingDuration: state.sharingDuration,
-        isSharing: state.isSharing
+        isSharing: state.isSharing,
+        walkSafe: state.walkSafe, // Persist so it survives app restart
+        lastCompletedPath: state.lastCompletedPath,
+        lastCompletedTime: state.lastCompletedTime,
+        partnerLastCompletedPath: state.partnerLastCompletedPath,
+        partnerLastCompletedTime: state.partnerLastCompletedTime,
+        partnerLastSafePlaceId: state.partnerLastSafePlaceId,
+        userLastSafePlaceId: state.userLastSafePlaceId,
       }),
     }
   )

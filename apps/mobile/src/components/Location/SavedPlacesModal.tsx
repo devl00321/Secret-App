@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, TextInput, Alert } from 'react-native';
+import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, TextInput, Alert, Platform } from 'react-native';
 import {
   X,
   Plus,
@@ -70,7 +70,7 @@ export const SavedPlacesModal = ({ visible, onClose, onSelectOnMap, initialLocat
       type: selectedType,
       latitude: location.latitude,
       longitude: location.longitude,
-      radius: 150, // Default 150m geofence
+      radius: 200, // Standard 200m geofence for higher reliability
     });
 
     setNewName('');
@@ -95,32 +95,47 @@ export const SavedPlacesModal = ({ visible, onClose, onSelectOnMap, initialLocat
       animationType="slide"
       onRequestClose={onClose}
     >
-      <View style={styles.overlay}>
-        <View style={[styles.content, { backgroundColor: theme.surface }]}>
+      <TouchableOpacity 
+        style={styles.overlay} 
+        activeOpacity={1} 
+        onPress={onClose}
+      >
+        <TouchableOpacity 
+          activeOpacity={1} 
+          onPress={(e) => e.stopPropagation()}
+          style={[styles.content, { backgroundColor: theme.bgSurface }]}
+        >
           <View style={styles.header}>
-            <Text style={[styles.title, { color: theme.text }]}>Safe Places 📍</Text>
-            <TouchableOpacity onPress={onClose}>
-              <X size={24} color={theme.textLight} />
+            <Text style={[styles.title, { color: theme.textPrimary }]}>Safe Places 📍</Text>
+            <TouchableOpacity 
+              onPress={onClose}
+              hitSlop={{ top: 25, bottom: 25, left: 25, right: 25 }}
+            >
+              <X size={24} color={theme.textSecondary} />
             </TouchableOpacity>
           </View>
 
           {isAdding ? (
-            <View style={styles.addSection}>
-              <Text style={[styles.sectionTitle, { color: theme.textLight }]}>ADD NEW PLACE</Text>
+            <ScrollView 
+              style={styles.addSection} 
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ paddingBottom: 20 }}
+            >
+              <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>ADD NEW PLACE</Text>
               <TextInput
                 style={[styles.input, {
                   backgroundColor: theme.isDark ? '#222' : '#F8F8F8',
-                  color: theme.text,
-                  borderColor: theme.border
+                  color: theme.textPrimary,
+                  borderColor: theme.borderDefault
                 }]}
                 placeholder="Place Name (e.g. My School)"
-                placeholderTextColor={theme.textLight}
+                placeholderTextColor={theme.textSecondary}
                 value={newName}
                 onChangeText={setNewName}
                 autoFocus
               />
 
-              <Text style={[styles.sectionTitle, { color: theme.textLight, marginTop: 20 }]}>SELECT CATEGORY</Text>
+              <Text style={[styles.sectionTitle, { color: theme.textSecondary, marginTop: 20 }]}>SELECT CATEGORY</Text>
               <View style={styles.typeGrid}>
                 {PLACE_TYPES.map((type) => {
                   const Icon = type.icon;
@@ -131,14 +146,14 @@ export const SavedPlacesModal = ({ visible, onClose, onSelectOnMap, initialLocat
                       style={[
                         styles.typeItem,
                         { backgroundColor: theme.isDark ? '#222' : '#F8F8F8' },
-                        isSelected && { borderColor: theme.primary, borderWidth: 2 }
+                        isSelected && { borderColor: theme.accentRose, borderWidth: 2 }
                       ]}
                       onPress={() => setSelectedType(type.value as any)}
                     >
-                      <Icon size={20} color={isSelected ? theme.primary : theme.textLight} />
+                      <Icon size={20} color={isSelected ? theme.accentRose : theme.textSecondary} />
                       <Text style={[
                         styles.typeLabel,
-                        { color: isSelected ? theme.primary : theme.textLight, fontWeight: isSelected ? 'bold' : 'normal' }
+                        { color: isSelected ? theme.accentRose : theme.textSecondary, fontWeight: isSelected ? 'bold' : 'normal' }
                       ]}>
                         {type.label}
                       </Text>
@@ -148,38 +163,44 @@ export const SavedPlacesModal = ({ visible, onClose, onSelectOnMap, initialLocat
               </View>
 
               <View style={styles.buttonRow}>
-                <Button
-                  title="Back"
+                <TouchableOpacity
+                  style={[styles.backBtn, { borderColor: theme.borderDefault }]}
                   onPress={() => setIsAdding(false)}
-                  variant="outline"
-                  style={{ flex: 1, marginRight: 10 }}
-                />
-                <View style={{ flex: 1.5 }}>
-                  <Button
-                    title={initialLocation ? "Confirm Picked" : "Save Current"}
+                >
+                  <Text style={[styles.backBtnText, { color: theme.textPrimary }]}>Back</Text>
+                </TouchableOpacity>
+                <View style={styles.actionColumn}>
+                  <TouchableOpacity
+                    style={[styles.primaryActionBtn, { backgroundColor: theme.accentRose }]}
                     onPress={handleAddCurrent}
-                    style={{ marginBottom: 8 }}
-                  />
+                  >
+                    <Text style={styles.primaryActionText}>
+                      {initialLocation ? "Confirm Picked" : "Save Current"}
+                    </Text>
+                  </TouchableOpacity>
                   {!initialLocation && (
-                    <Button
-                      title="Pick on Map"
+                    <TouchableOpacity
+                      style={[styles.secondaryActionBtn, { borderColor: theme.accentRose }]}
                       onPress={onSelectOnMap}
-                      variant="outline"
-                    />
+                    >
+                      <Text style={[styles.secondaryActionText, { color: theme.accentRose }]}>
+                        Pick on Map
+                      </Text>
+                    </TouchableOpacity>
                   )}
                 </View>
               </View>
-            </View>
+            </ScrollView>
           ) : (
             <>
               <ScrollView style={styles.list} showsVerticalScrollIndicator={false}>
-                {savedPlaces.length === 0 ? (
+                {(!Array.isArray(savedPlaces) || savedPlaces.length === 0) ? (
                   <View style={styles.emptyState}>
-                    <Navigation size={48} color={theme.textLight} style={{ opacity: 0.3, marginBottom: 15 }} />
-                    <Text style={[styles.emptyText, { color: theme.textLight }]}>
+                    <Navigation size={48} color={theme.textSecondary} style={{ opacity: 0.3, marginBottom: 15 }} />
+                    <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
                       No safe places added yet.
                     </Text>
-                    <Text style={[styles.emptySubText, { color: theme.textLight }]}>
+                    <Text style={[styles.emptySubText, { color: theme.textSecondary }]}>
                       Add places to get automatic arrival alerts.
                     </Text>
                   </View>
@@ -192,18 +213,18 @@ export const SavedPlacesModal = ({ visible, onClose, onSelectOnMap, initialLocat
                         key={place.id}
                         style={[styles.placeItem, { backgroundColor: theme.isDark ? '#222' : '#F8F8F8' }]}
                       >
-                        <View style={[styles.placeIcon, { backgroundColor: theme.primary + '15' }]}>
-                          <Icon size={20} color={theme.primary} />
+                        <View style={[styles.placeIcon, { backgroundColor: theme.accentRose + '15' }]}>
+                          <Icon size={20} color={theme.accentRose} />
                         </View>
                         <View style={styles.placeInfo}>
-                          <Text style={[styles.placeName, { color: theme.text }]}>{place.name}</Text>
-                          <Text style={[styles.placeType, { color: theme.textLight }]}>{typeInfo.label}</Text>
+                          <Text style={[styles.placeName, { color: theme.textPrimary }]}>{place.name}</Text>
+                          <Text style={[styles.placeType, { color: theme.textSecondary }]}>{typeInfo.label}</Text>
                         </View>
                         <TouchableOpacity
                           onPress={() => handleDelete(place.id, place.name)}
                           style={styles.deleteButton}
                         >
-                          <Trash2 size={18} color={theme.error || '#FF4444'} />
+                          <Trash2 size={18} color={theme.dangerRed || '#FF4444'} />
                         </TouchableOpacity>
                       </View>
                     );
@@ -219,8 +240,8 @@ export const SavedPlacesModal = ({ visible, onClose, onSelectOnMap, initialLocat
               />
             </>
           )}
-        </View>
-      </View>
+        </TouchableOpacity>
+      </TouchableOpacity>
     </Modal>
   );
 };
@@ -336,8 +357,45 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     marginTop: 'auto',
     paddingTop: 20,
-    alignItems: 'stretch',
-    minHeight: 75,
+    gap: 12,
+  },
+  backBtn: {
+    flex: 1,
+    height: 108,
+    borderRadius: 20,
+    borderWidth: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  backBtnText: {
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  actionColumn: {
+    flex: 1.5,
+    gap: 8,
+  },
+  primaryActionBtn: {
+    height: 50,
+    borderRadius: 25,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  primaryActionText: {
+    color: 'white',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  secondaryActionBtn: {
+    height: 50,
+    borderRadius: 25,
+    borderWidth: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  secondaryActionText: {
+    fontSize: 15,
+    fontWeight: '800',
   },
   addButton: {
     marginTop: 10,

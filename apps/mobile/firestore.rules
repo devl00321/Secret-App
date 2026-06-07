@@ -1,0 +1,117 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // --- Helper Functions ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Checks if the authenticated user is part of the specific couple
+    function isPartnerOf(coupleId) {
+      return isSignedIn() && 
+             exists(/databases/$(database)/documents/couples/$(coupleId)) && 
+             get(/databases/$(database)/documents/couples/$(coupleId)).data.users.hasAny([request.auth.uid]);
+    }
+
+    // Checks if the caller is the registered partner of a given user
+    function isRegisteredPartnerOf(userId) {
+      return isSignedIn() &&
+             exists(/databases/$(database)/documents/users/$(userId)) &&
+             get(/databases/$(database)/documents/users/$(userId)).data.partnerId == request.auth.uid;
+    }
+
+    // --- Collection Rules ---
+
+    // 1. User Profiles
+    match /users/{userId} {
+      // FIX VUL-3: Restrict reads — only the owner OR their registered partner can read a profile.
+      allow read: if isOwner(userId) || isRegisteredPartnerOf(userId);
+      allow create: if isOwner(userId);
+      
+      // Update rule: a user can update their own doc freely.
+      // They can also update another user's profile ONLY to initiate a pairing 
+      // (if that user is currently single) or if they are their registered partner.
+      allow update: if isOwner(userId) || (
+        isSignedIn() && 
+        (
+          !('partnerId' in resource.data) || 
+          resource.data.partnerId == null || 
+          resource.data.partnerId == request.auth.uid
+        ) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'partnerId', 
+          'coupleId', 
+          'partnerNickname', 
+          'incomingPingEnc', 
+          'incomingPingTs', 
+          'locationRequestTs', 
+          'ringRequestTs',
+          'dob',
+          'dobMissingNotifyTs'
+        ])
+      );
+      
+      allow delete: if isOwner(userId);
+    }
+
+    // 1.5. Locations (Live Location Tracking)
+    match /locations/{userId} {
+      allow read: if isOwner(userId) || isRegisteredPartnerOf(userId);
+      allow create: if isOwner(userId);
+      // Owner can update freely. Partner can only update 'incomingPing'.
+      allow update: if isOwner(userId) || (
+        isRegisteredPartnerOf(userId) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['incomingPing'])
+      );
+      allow delete: if isOwner(userId);
+    }
+
+    // 2. Couples
+    match /couples/{coupleId} {
+      allow read: if isSignedIn() && resource.data.users.hasAny([request.auth.uid]);
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && resource.data.users.hasAny([request.auth.uid]);
+      allow delete: if isSignedIn() && resource.data.users.hasAny([request.auth.uid]);
+      
+      // 3. Messages (Nested Subcollection)
+      match /messages/{messageId} {
+        allow read: if isPartnerOf(coupleId);
+        allow create: if isPartnerOf(coupleId);
+        allow update: if isPartnerOf(coupleId);
+        allow delete: if isPartnerOf(coupleId);
+      }
+      
+      // 5. Activities (Nested)
+      match /activities/{activityId} {
+        allow read, write: if isPartnerOf(coupleId);
+      }
+    }
+
+    // 4. Invite Codes (Pairing)
+    match /inviteCodes/{codeId} {
+      // Anyone signed in can read (needed to look up a code before joining)
+      allow read: if isSignedIn();
+      // Only signed-in users can create their own codes
+      allow create: if isSignedIn() && request.resource.data.createdBy == request.auth.uid;
+      // FIX VUL-4: Restrict updates:
+      //   - The creator can update their own code freely
+      //   - Anyone signed in can mark a code as used (joiner's action), but ONLY
+      //     the isUsed, usedBy, and usedAt fields may be written
+      allow update: if isSignedIn() && (
+        resource.data.createdBy == request.auth.uid
+        ||
+        (
+          !resource.data.isUsed &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isUsed', 'usedBy', 'usedAt'])
+        )
+      );
+      // Only the creator can delete their own invite code
+      allow delete: if isSignedIn() && resource.data.createdBy == request.auth.uid;
+    }
+  }
+}
