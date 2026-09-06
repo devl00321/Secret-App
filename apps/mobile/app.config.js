@@ -55,7 +55,7 @@ export default ({ config }) => {
       config: {
         ...config.ios?.config,
         // Override with the environment variable if available
-        googleMapsApiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_IOS || config.ios?.config?.googleMapsApiKey
+        googleMapsApiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_IOS || process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || config.ios?.config?.googleMapsApiKey
       }
     },
     android: {
@@ -65,7 +65,7 @@ export default ({ config }) => {
         googleMaps: {
           ...config.android?.config?.googleMaps,
           // Override with the environment variable if available
-          apiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_ANDROID || config.android?.config?.googleMaps?.apiKey
+          apiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_ANDROID || process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || config.android?.config?.googleMaps?.apiKey
         }
       }
     }

@@ -13,7 +13,7 @@
       "buildNumber": "1",
       "googleServicesFile": "./GoogleService-Info.plist",
       "config": {
-        "googleMapsApiKey": "AIzaSyAl5kUZYm2W2QfH0yBL_jskdXTiHHrKg3k"
+        "googleMapsApiKey": ""
       },
       "infoPlist": {
         "CFBundleURLTypes": [
@@ -53,7 +53,7 @@
       "googleServicesFile": "./google-services.json",
       "config": {
         "googleMaps": {
-          "apiKey": "AIzaSyDBzJyB0cRA0db_qTfc_tNTq-3kYVpxIws"
+          "apiKey": ""
         }
       },
       "predictiveBackGestureEnabled": false
