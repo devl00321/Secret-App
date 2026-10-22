@@ -63,40 +63,88 @@ Unlike conventional tracking or social apps that harvest and monetize intimate r
 ## 🏛️ System Architecture
 
 ```mermaid
-graph TD
-    subgraph "Mobile Client (React Native + Expo SDK 54)"
-        UI["Expo Router UI Layer<br/>(Tabs, Dynamic Routes, Reanimated 4)"]
-        State["Zustand State Stores<br/>(useAuthStore, useLocationStore, useChatStore)"]
-        CryptoEngine["Crypto Engine (OpenSSL + WebCrypto)<br/>• ECDH P-256 Key Exchange<br/>• AES-256-GCM (PBKDF2 100k iters)<br/>• Hardware Keychain Storage"]
-        LocEngine["Location & Background Tasks<br/>• Expo TaskManager / Foreground Service<br/>• Haversine Geofencing<br/>• Turn-by-Turn Navigation & Voice Guidance"]
-        AlertSystem["Alert Escalation Service<br/>• Silent Mode Bypass Audio<br/>• Physiological Heartbeat Haptics<br/>• Dual-Camera Evidence Capture"]
+flowchart LR
+    %% STAGE 1: CLIENT
+    subgraph Client["📱 1. Mobile Client (React Native • Expo SDK 54)"]
+        direction TB
+        UI["🎨 <b>Expo Router UI Layer</b><br/>Luxury Glassmorphism & Reanimated 4"]
+        State["⚡ <b>Zustand Encrypted Stores</b><br/>Hardware-Key AES-256 Storage at Rest"]
+        Crypto["🔐 <b>Crypto Engine (OpenSSL)</b><br/>ECDH P-256 Key Exchange + AES-256-GCM"]
+        Sensors["📍 <b>Sensors & Background Engine</b><br/>Haversine Geofencing & Turn-by-Turn GPS"]
+        Alerts["🚨 <b>Luvv Guard Escalation</b><br/>Silent Siren Bypass & 20-Shot Dual-Cam"]
+
+        UI --> State
+        State --> Crypto
+        State --> Sensors
+        State --> Alerts
     end
 
-    subgraph "Backend Services"
-        Server["Node.js + Express Microservice<br/>• IP Rate Limiting & Helmet<br/>• Atomic Pairing Code Validation"]
-        CF["Firebase Cloud Functions (Gen 2)<br/>• SOS Emergency Dispatcher<br/>• Zero-Knowledge Geofence Pusher<br/>• Gemini 1.5 Flash Safety Insights"]
-        Gemini["Google Gemini AI API<br/>(Luvv Guard Intelligence)"]
+    %% STAGE 2: PERSISTENCE & GATEWAY
+    subgraph Cloud["🔒 2. Zero-Knowledge Cloud & Gateway"]
+        direction TB
+        Gateway["🛡️ <b>Pairing Gateway (Express)</b><br/>IP Rate Limiting, Helmet & Code Verification"]
+        Firestore[("🗄️ <b>Cloud Firestore</b><br/>SHA-256 Couple Fingerprints & E2EE Payloads")]
+        Storage[("📦 <b>Firebase Storage</b><br/>AES-Encrypted Media & Forensic Evidence")]
+
+        Gateway -->|Atomic Couple Provisioning| Firestore
     end
 
-    subgraph "Persistence & Cloud"
-        Firestore["Cloud Firestore (Zero-Knowledge Ciphertexts)<br/>• SHA-256 Couple Fingerprints<br/>• Granular Security Rules (RBAC)"]
-        Storage["Firebase Storage (Encrypted Media & Evidence)"]
-        FCM["Firebase Cloud Messaging (FCM / APNs)"]
+    %% STAGE 3: INTELLIGENCE & DISPATCH
+    subgraph Intelligence["🧠 3. Intelligence & Event Dispatch"]
+        direction TB
+        Functions["⚙️ <b>Firebase Cloud Functions (Gen 2)</b><br/>Silent SOS Dispatcher & Geofence Triggers"]
+        Gemini["✨ <b>Google Gemini 1.5 Flash</b><br/>Contextual Safety & Anomaly Detection AI"]
+        FCM["📡 <b>FCM & APNs Gateway</b><br/>Data-Only Silent Wakeup & Emergency Alarms"]
+
+        Functions <-->|Safety Context / Suggestions| Gemini
+        Functions -->|High-Priority Alarm| FCM
     end
 
-    UI --> State
-    State --> CryptoEngine
-    State --> LocEngine
-    State --> AlertSystem
-    CryptoEngine <-->|Encrypted Payloads| Firestore
-    LocEngine -->|Encrypted Coordinates| Firestore
-    AlertSystem -->|Evidence Photos| Storage
-    Server --> Firestore
-    Firestore --> CF
-    CF --> Gemini
-    CF --> FCM
-    FCM -->|Data-Only Silent Wakeup| State
+    %% Stage 1 to Stage 2 Links
+    UI -.->|1. Pair Code Request| Gateway
+    Crypto <==>|2. E2EE Ciphertexts| Firestore
+    Sensors -->|3. Encrypted Coordinates| Firestore
+    Alerts -->|4. Photo Evidence Vault| Storage
+
+    %% Stage 2 to Stage 3 Links
+    Firestore -->|5. Real-Time Document Trigger| Functions
+
+    %% Tier Box Themes
+    style Client fill:#160b24,stroke:#e11d48,stroke-width:2.5px,color:#FFFFFF
+    style Cloud fill:#06231a,stroke:#10b981,stroke-width:2.5px,color:#FFFFFF
+    style Intelligence fill:#0a192f,stroke:#3b82f6,stroke-width:2.5px,color:#FFFFFF
+
+    %% Component Classes
+    classDef uiStyle fill:#2e1065,stroke:#c084fc,stroke-width:1.5px,color:#FFFFFF;
+    classDef stateStyle fill:#3b0764,stroke:#e879f9,stroke-width:1.5px,color:#FFFFFF;
+    classDef cryptoStyle fill:#0c4a6e,stroke:#38bdf8,stroke-width:1.5px,color:#FFFFFF;
+    classDef sensorStyle fill:#164e63,stroke:#22d3ee,stroke-width:1.5px,color:#FFFFFF;
+    classDef alertStyle fill:#4c0519,stroke:#f43f5e,stroke-width:1.5px,color:#FFFFFF;
+    classDef gwStyle fill:#1e3a8a,stroke:#60a5fa,stroke-width:1.5px,color:#FFFFFF;
+    classDef dbStyle fill:#064e3b,stroke:#34d399,stroke-width:1.5px,color:#FFFFFF;
+    classDef fnStyle fill:#172554,stroke:#93c5fd,stroke-width:1.5px,color:#FFFFFF;
+    classDef aiStyle fill:#451a03,stroke:#f59e0b,stroke-width:1.5px,color:#FFFFFF;
+    classDef fcmStyle fill:#134e4a,stroke:#2dd4bf,stroke-width:1.5px,color:#FFFFFF;
+
+    class UI uiStyle;
+    class State stateStyle;
+    class Crypto cryptoStyle;
+    class Sensors sensorStyle;
+    class Alerts alertStyle;
+    class Gateway gwStyle;
+    class Firestore,Storage dbStyle;
+    class Functions fnStyle;
+    class Gemini aiStyle;
+    class FCM fcmStyle;
+
+    linkStyle default stroke:#818cf8,stroke-width:2px;
 ```
+
+> **Architecture Highlights & Security Boundaries:**
+> * 🟣 **Stage 1 (Client Hardware Tier):** End-to-end encryption keys and decrypted plaintexts exist strictly within local hardware memory. State persistence is encrypted at rest using AES-256 backed by on-device entropy.
+> * 🟢 **Stage 2 (Zero-Knowledge Cloud Tier):** Cloud Firestore and Firebase Storage only ingest pre-encrypted ciphertexts and SHA-256 couple fingerprints. Firebase servers have zero mathematical capability to decrypt location traces, chat histories, or emergency photos.
+> * 🔵 **Stage 3 (Intelligence & Push Tier):** Firebase Cloud Functions process trigger events and collaborate with Google Gemini 1.5 Flash for proactive contextual safety assessments, dispatching zero-knowledge data-only silent wakeup notifications via APNs/FCM.
+
 
 ---
 
