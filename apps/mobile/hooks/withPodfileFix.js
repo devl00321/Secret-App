@@ -58,6 +58,15 @@ module.exports = function withPodfileFix(config) {
         config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.1'
       end
     end
+
+    # 8. Ensure React-Core prebuilt binary is extracted
+    react_bin = File.join(__dir__, 'Pods/React-Core-prebuilt/React.xcframework/ios-arm64_x86_64-simulator/React.framework/React')
+    unless File.exist?(react_bin)
+      tarball = Dir.glob(File.join(__dir__, 'Pods/ReactNativeCore-artifacts/reactnative-core-*-debug.tar.gz')).first
+      if tarball && File.exist?(tarball)
+        system("tar -xzf '#{tarball}' -C '#{File.join(__dir__, 'Pods/React-Core-prebuilt')}'")
+      end
+    end
   end`;
 
       contents = contents.replace(postInstallRegex, newPostInstall);

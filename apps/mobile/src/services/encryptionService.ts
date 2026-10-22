@@ -16,6 +16,13 @@ import {
 const SHARED_SECRET_KEY_PREFIX = 'luvv_shared_secret_v1_';
 
 export const encryptionService = {
+  // ── Legacy Bridge Helpers ────────────────────────────────────────────────
+  LEGACY_NO_COUPLE_SENTINEL: 'luvv_no_couple_v1',
+
+  getLegacySecret: (coupleId: string): string => {
+    return `luvv_legacy_${coupleId.split('').reverse().join('')}_v1`;
+  },
+
   // ── Key Lifecycle ────────────────────────────────────────────────────────
 
   initializeKeys: async (): Promise<string> => {
