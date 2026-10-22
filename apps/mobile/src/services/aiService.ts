@@ -1,5 +1,3 @@
-import { getFunctions, httpsCallable } from 'firebase/functions';
-
 export interface SafetyContext {
   latitude: number;
   longitude: number;
@@ -17,18 +15,38 @@ export interface AIInsight {
   reason?: string;
 }
 
+const PROJECT_ID = process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID || 'couple-app-60de2';
+const REGION = 'asia-south2';
+const FUNCTION_URL = `https://${REGION}-${PROJECT_ID}.cloudfunctions.net/analyzeSafetyContext`;
+
 export const aiService = {
   /**
    * Analyzes the current safety context using the secure Firebase Cloud Function.
+   * Falls back gracefully to rule-based insight if offline or function is uncallable.
    */
   analyzeSafetyContext: async (context: SafetyContext): Promise<AIInsight> => {
     try {
-      const functions = getFunctions();
-      const analyzeFn = httpsCallable<SafetyContext, AIInsight>(functions, 'analyzeSafetyContext');
-      const result = await analyzeFn(context);
-      return result.data;
-    } catch (error) {
-      console.warn('[AIService] Cloud Function analysis failed:', error);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 6000);
+
+      const response = await fetch(FUNCTION_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data: context }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (response.ok) {
+        const json = await response.json();
+        if (json?.result) {
+          return json.result as AIInsight;
+        }
+      }
+
+      return aiService.getFallbackInsight(context);
+    } catch {
       return aiService.getFallbackInsight(context);
     }
   },
